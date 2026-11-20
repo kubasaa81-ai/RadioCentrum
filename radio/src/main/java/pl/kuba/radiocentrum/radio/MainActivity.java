@@ -68,6 +68,7 @@ public class MainActivity extends Activity {
     private TextView dialDisplay, dialName;
     private TextView settingsInfo;
     private EditText dictateTarget;
+    private String dictateBase = "";
     private static final int REQ_SPEECH = 42;
 
     private final Runnable onChange = this::refresh;
@@ -671,6 +672,7 @@ public class MainActivity extends Activity {
     /** Dyktowanie: słucha telefon (Samsung ma polskie rozpoznawanie mowy); bez połączenia – próbuje radio. */
     private void dictate(EditText target) {
         dictateTarget = target;
+        dictateBase = target.getText().toString().trim();
         if (RadioService.sendToPhone(J.obj("t", "dictate"))) return;
         Intent i = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
         i.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
@@ -697,11 +699,16 @@ public class MainActivity extends Activity {
         a.appendDictation(text);
     }
 
+    /** Tekst pojawia się na bieżąco w trakcie mówienia. */
+    static void liveDictation(String text) {
+        MainActivity a = active;
+        if (a != null) a.appendDictation(text);
+    }
+
     private void appendDictation(String said) {
         if (dictateTarget == null || said == null || said.isEmpty()) return;
         said = said.substring(0, 1).toUpperCase(new Locale("pl", "PL")) + said.substring(1);
-        String cur = dictateTarget.getText().toString().trim();
-        dictateTarget.setText(cur.isEmpty() ? said : cur + " " + said);
+        dictateTarget.setText(dictateBase.isEmpty() ? said : dictateBase + " " + said);
         dictateTarget.setSelection(dictateTarget.getText().length());
     }
 

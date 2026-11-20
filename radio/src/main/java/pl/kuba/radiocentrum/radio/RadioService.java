@@ -332,6 +332,9 @@ public class RadioService extends Service implements Link.Handler {
                     if (Prefs.autoRead(this)) Mowa.speak(this, Popup.speech(m));
                 }
                 break;
+            case "dictating":
+                MainActivity.liveDictation(m.optString("text"));
+                return;
             case "dictated":
                 MainActivity.deliverDictation(this, m.optString("text"), m.optString("err"));
                 return;

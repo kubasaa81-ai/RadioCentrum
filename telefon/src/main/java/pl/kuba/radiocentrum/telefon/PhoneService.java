@@ -431,10 +431,14 @@ public class PhoneService extends NotificationListenerService implements Link.Ha
             Intent i = new Intent(this, DictateActivity.class);
             i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_NO_ANIMATION);
             startActivity(i);
-            send(J.obj("t", "toast", "text", "🎤 Mów teraz – słucha telefon"));
+            send(J.obj("t", "toast", "text", "🎤 Mów – tekst pojawi się na bieżąco. Koniec: 3 s ciszy"));
         } catch (Exception e) {
             send(J.obj("t", "dictated", "err", "Nie udało się włączyć mikrofonu w telefonie"));
         }
+    }
+
+    void sendLiveDictation(String text) {
+        send(J.obj("t", "dictating", "text", text));
     }
 
     void deliverDictation(String text, String err) {
