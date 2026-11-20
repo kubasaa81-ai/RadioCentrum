@@ -6,6 +6,8 @@ import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
+import android.media.AudioManager;
+import android.media.ToneGenerator;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
@@ -39,6 +41,7 @@ public class DictateActivity extends Activity {
     private boolean carMic;
     private long startedAt;
     private final StringBuilder acc = new StringBuilder();
+    private boolean beeped;
     private final Handler h = new Handler(Looper.getMainLooper());
 
     @Override
@@ -108,7 +111,27 @@ public class DictateActivity extends Activity {
         // mikrofon w aucie: otwórz kanał rozmowy Bluetooth (jak przy telefonowaniu)
         carMic = CarAudio.route(this);
         live.setText(carMic ? "Mów do mikrofonu w aucie" : "Mów do telefonu (brak zestawu w aucie)");
-        h.postDelayed(this::listen, carMic ? 1600 : 0);
+        h.postDelayed(this::beepAndListen, carMic ? 1600 : 200);
+    }
+
+    /** Krótkie „pik” w głośnikach auta = możesz mówić. */
+    private void beepAndListen() {
+        if (done) return;
+        if (!beeped) {
+            beeped = true;
+            try {
+                final ToneGenerator tg = new ToneGenerator(
+                        carMic ? AudioManager.STREAM_VOICE_CALL : AudioManager.STREAM_MUSIC, 90);
+                tg.startTone(ToneGenerator.TONE_PROP_BEEP, 180);
+                h.postDelayed(tg::release, 600);
+            } catch (Exception ignored) {
+            }
+            live.setText(carMic ? "🔔 Pik! Mów do mikrofonu w aucie" : "🔔 Pik! Mów do telefonu");
+            // poczekaj aż pik wybrzmi, żeby go nie rozpoznało jako mowy
+            h.postDelayed(this::listen, 350);
+        } else {
+            listen();
+        }
     }
 
     /** Jeden fragment słuchania. Po nim – kolejny, aż do ciszy. */
