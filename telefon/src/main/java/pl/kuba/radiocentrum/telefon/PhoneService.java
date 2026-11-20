@@ -16,6 +16,9 @@ import android.content.IntentFilter;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.database.Cursor;
+import android.media.AudioAttributes;
+import android.media.AudioDeviceInfo;
+import android.media.AudioManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -25,6 +28,7 @@ import android.provider.CallLog;
 import android.provider.ContactsContract;
 import android.provider.Settings;
 import android.speech.tts.TextToSpeech;
+import android.speech.tts.UtteranceProgressListener;
 import android.service.notification.NotificationListenerService;
 import android.service.notification.StatusBarNotification;
 import android.telecom.TelecomManager;
@@ -92,6 +96,22 @@ public class PhoneService extends NotificationListenerService implements Link.Ha
             tts = new TextToSpeech(this, st -> {
                 if (st == TextToSpeech.SUCCESS && tts != null) {
                     tts.setLanguage(new Locale("pl", "PL"));
+                    tts.setOnUtteranceProgressListener(new UtteranceProgressListener() {
+                        @Override
+                        public void onStart(String id) {
+                        }
+
+                        @Override
+                        public void onDone(String id) {
+                            main.postDelayed(PhoneService.this::releaseAudio, 600);
+                        }
+
+                        @Override
+                        @SuppressWarnings("deprecation")
+                        public void onError(String id) {
+                            main.post(PhoneService.this::releaseAudio);
+                        }
+                    });
                     ttsReady = true;
                 }
             });
@@ -415,14 +435,67 @@ public class PhoneService extends NotificationListenerService implements Link.Ha
         }
     }
 
-    /** Czytanie na głos – dźwięk idzie przez Bluetooth do głośników auta. */
-    private void speak(String text) {
+    private boolean audioRouted;
+
+    /**
+     * Czytanie na głos przez kanał rozmowy Bluetooth (HFP) – radio zawsze go odtwarza,
+     * nawet gdy gra FM. Gdy nie ma połączenia z zestawem, czyta głośnikiem telefonu.
+     */
+    @SuppressWarnings("deprecation")
+    private void speak(final String text) {
         if (text == null || text.isEmpty()) return;
         if (!ttsReady || tts == null) {
             send(J.obj("t", "toast", "text", "Syntezator mowy w telefonie nie jest gotowy"));
             return;
         }
-        tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, "rc");
+        AudioManager am = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
+        boolean routed = false;
+        try {
+            am.setMode(AudioManager.MODE_IN_COMMUNICATION);
+            if (Build.VERSION.SDK_INT >= 31) {
+                for (AudioDeviceInfo d : am.getAvailableCommunicationDevices()) {
+                    if (d.getType() == AudioDeviceInfo.TYPE_BLUETOOTH_SCO) {
+                        routed = am.setCommunicationDevice(d);
+                        break;
+                    }
+                }
+            } else {
+                am.startBluetoothSco();
+                am.setBluetoothScoOn(true);
+                routed = true;
+            }
+        } catch (Exception ignored) {
+        }
+        audioRouted = routed;
+        if (!routed) {
+            try {
+                am.setMode(AudioManager.MODE_NORMAL);
+            } catch (Exception ignored) {
+            }
+        }
+        tts.setAudioAttributes(new AudioAttributes.Builder()
+                .setUsage(routed ? AudioAttributes.USAGE_VOICE_COMMUNICATION : AudioAttributes.USAGE_MEDIA)
+                .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                .build());
+        // chwila na przełączenie radia na kanał rozmowy, żeby nie uciąć początku
+        main.postDelayed(() -> tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, "rc"), routed ? 1800 : 0);
+    }
+
+    @SuppressWarnings("deprecation")
+    private void releaseAudio() {
+        if (!audioRouted) return;
+        audioRouted = false;
+        try {
+            AudioManager am = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
+            if (Build.VERSION.SDK_INT >= 31) {
+                am.clearCommunicationDevice();
+            } else {
+                am.setBluetoothScoOn(false);
+                am.stopBluetoothSco();
+            }
+            am.setMode(AudioManager.MODE_NORMAL);
+        } catch (Exception ignored) {
+        }
     }
 
     private static Notification.Action findReply(Notification n) {

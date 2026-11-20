@@ -565,7 +565,7 @@ public class MainActivity extends Activity {
     }
 
     private void speak(JSONObject m) {
-        if (!RadioService.sendToPhone(J.obj("t", "speak", "text", Popup.speech(m)))) {
+        if (!Mowa.speak(Popup.speech(m))) {
             toast("Brak połączenia z telefonem");
         }
     }
@@ -928,6 +928,7 @@ public class MainActivity extends Activity {
     private String settingsText() {
         return (Popup.canDraw(this) ? "✅ Okienka nad innymi aplikacjami: włączone"
                 : "❌ Okienka nad innymi aplikacjami: WYŁĄCZONE – kliknij niebieski przycisk")
+                + "\n" + Mowa.info()
                 + "\n" + RadioService.btInfo
                 + "\n" + RadioService.wifiInfo
                 + "\nZapisany kod Wi-Fi: " + (Prefs.code(this).isEmpty() ? "brak" : Prefs.code(this))

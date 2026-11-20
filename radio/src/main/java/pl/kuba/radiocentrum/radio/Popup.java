@@ -97,7 +97,7 @@ final class Popup {
         LinearLayout row = new LinearLayout(app);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.addView(Ui.buttonFit(app, "🔊 Przeczytaj", Ui.BLUE, 18, v -> {
-            if (!RadioService.sendToPhone(J.obj("t", "speak", "text", speech))) {
+            if (!Mowa.speak(speech)) {
                 android.widget.Toast.makeText(app, "Brak połączenia z telefonem", android.widget.Toast.LENGTH_SHORT).show();
             }
             h.removeCallbacks(autoHide);

@@ -97,6 +97,7 @@ public class RadioService extends Service implements Link.Handler {
         main = new Handler(Looper.getMainLooper());
         startForeground(1, buildNotification());
         Store.load(this);
+        Mowa.init(this);
         new Thread(this::btLoop, "rc-bt").start();
         new Thread(this::wifiLoop, "rc-wifi").start();
         new Thread(this::beaconLoop, "rc-beacon").start();
@@ -328,7 +329,7 @@ public class RadioService extends Service implements Link.Handler {
             case "notif":
                 if (Store.putNotif(m) && !m.optBoolean("old")) {
                     Popup.showNotif(this, m);
-                    if (Prefs.autoRead(this)) sendToPhone(J.obj("t", "speak", "text", Popup.speech(m)));
+                    if (Prefs.autoRead(this)) Mowa.speak(Popup.speech(m));
                 }
                 break;
             case "toast":
