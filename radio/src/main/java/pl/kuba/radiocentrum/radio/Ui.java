@@ -78,6 +78,14 @@ final class Ui {
         return b;
     }
 
+    /** Przycisk, którego tekst sam się zmniejsza, gdy brakuje miejsca. */
+    static Button buttonFit(Context c, String s, int color, float sp, View.OnClickListener l) {
+        Button b = button(c, s, color, sp, l);
+        b.setMaxLines(2);
+        autoSize(b, 11, Math.round(sp));
+        return b;
+    }
+
     static void setColor(Context c, View v, int color) {
         StateListDrawable sl = new StateListDrawable();
         sl.addState(new int[]{android.R.attr.state_pressed}, round(c, darker(color), 14));

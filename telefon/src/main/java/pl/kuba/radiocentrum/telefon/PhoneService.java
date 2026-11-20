@@ -3,6 +3,7 @@ package pl.kuba.radiocentrum.telefon;
 import android.Manifest;
 import android.annotation.SuppressLint;
 import android.app.Notification;
+import android.app.RemoteInput;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothManager;
@@ -23,6 +24,7 @@ import android.os.Looper;
 import android.provider.CallLog;
 import android.provider.ContactsContract;
 import android.provider.Settings;
+import android.speech.tts.TextToSpeech;
 import android.service.notification.NotificationListenerService;
 import android.service.notification.StatusBarNotification;
 import android.telecom.TelecomManager;
@@ -32,10 +34,19 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.IOException;
+import java.net.DatagramPacket;
+import java.net.DatagramSocket;
+import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -48,6 +59,7 @@ public class PhoneService extends NotificationListenerService implements Link.Ha
 
     public static final UUID APP_UUID = UUID.fromString("7a3c2e10-5b1f-4c8e-9d2a-6f4b8e1c3a51");
     public static final int PORT = 47800;
+    public static final int BEACON_PORT = 47801;
 
     public static volatile String status = "Usługa nie działa";
     public static volatile PhoneService instance;
@@ -58,6 +70,9 @@ public class PhoneService extends NotificationListenerService implements Link.Ha
     private final ExecutorService sendExec = Executors.newSingleThreadExecutor();
     private Handler main;
     private BroadcastReceiver phoneReceiver;
+    private final Map<String, Notification.Action> replyActions = new ConcurrentHashMap<>();
+    private TextToSpeech tts;
+    private volatile boolean ttsReady;
 
     // ------------------------------------------------------------------ cykl życia
 
@@ -70,7 +85,17 @@ public class PhoneService extends NotificationListenerService implements Link.Ha
         status = "Szukam radia…";
         new Thread(this::bluetoothLoop, "rc-bt").start();
         new Thread(this::wifiLoop, "rc-wifi").start();
+        new Thread(this::beaconLoop, "rc-beacon").start();
         registerPhoneReceiver();
+        try {
+            tts = new TextToSpeech(this, st -> {
+                if (st == TextToSpeech.SUCCESS && tts != null) {
+                    tts.setLanguage(new Locale("pl", "PL"));
+                    ttsReady = true;
+                }
+            });
+        } catch (Exception ignored) {
+        }
         main.postDelayed(new Runnable() {
             @Override
             public void run() {
@@ -95,6 +120,10 @@ public class PhoneService extends NotificationListenerService implements Link.Ha
             ServerSocket s = server;
             if (s != null) s.close();
         } catch (IOException ignored) {
+        }
+        try {
+            if (tts != null) tts.shutdown();
+        } catch (Exception ignored) {
         }
         status = "Usługa zatrzymana";
         super.onDestroy();
@@ -205,6 +234,21 @@ public class PhoneService extends NotificationListenerService implements Link.Ha
         }
     }
 
+    /** W sieci Wi-Fi (np. router w aucie) co kilka sekund ogłasza: „tu jest telefon”. Radio samo się wtedy łączy. */
+    private void beaconLoop() {
+        byte[] msg = ("RADIOCENTRUM " + PORT).getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        while (running) {
+            if (!isConnected()) {
+                try (DatagramSocket ds = new DatagramSocket()) {
+                    ds.setBroadcast(true);
+                    ds.send(new DatagramPacket(msg, msg.length, InetAddress.getByName("255.255.255.255"), BEACON_PORT));
+                } catch (Exception ignored) {
+                }
+            }
+            sleep(4000);
+        }
+    }
+
     private void handleTcp(Socket c) {
         try {
             c.setSoTimeout(10000);
@@ -266,6 +310,15 @@ public class PhoneService extends NotificationListenerService implements Link.Ha
             case "reject":
                 main.post(this::endCall);
                 break;
+            case "reply":
+                final String key = m.optString("key");
+                final String text = m.optString("text");
+                main.post(() -> reply(key, text));
+                break;
+            case "speak":
+                final String say = m.optString("text");
+                main.post(() -> speak(say));
+                break;
             default:
                 break;
         }
@@ -314,6 +367,54 @@ public class PhoneService extends NotificationListenerService implements Link.Ha
             tm.endCall();
         } catch (Exception ignored) {
         }
+    }
+
+    /** Odpowiedź przez przycisk „Odpowiedz” z powiadomienia (SMS, WhatsApp, Messenger…). */
+    private void reply(String key, String text) {
+        Notification.Action a = replyActions.get(key);
+        if (a == null || text == null || text.trim().isEmpty()) {
+            send(J.obj("t", "toast", "text", "Na tę wiadomość nie da się odpowiedzieć z radia"));
+            return;
+        }
+        try {
+            RemoteInput[] ris = a.getRemoteInputs();
+            Intent i = new Intent();
+            i.addFlags(Intent.FLAG_RECEIVER_FOREGROUND);
+            Bundle b = new Bundle();
+            for (RemoteInput ri : ris) b.putCharSequence(ri.getResultKey(), text);
+            RemoteInput.addResultsToIntent(ris, i, b);
+            a.actionIntent.send(this, 0, i);
+            send(J.obj("t", "toast", "text", "Wysłano odpowiedź ✅"));
+        } catch (Exception e) {
+            send(J.obj("t", "toast", "text", "Nie udało się wysłać odpowiedzi"));
+        }
+    }
+
+    /** Czytanie na głos – dźwięk idzie przez Bluetooth do głośników auta. */
+    private void speak(String text) {
+        if (text == null || text.isEmpty()) return;
+        if (!ttsReady || tts == null) {
+            send(J.obj("t", "toast", "text", "Syntezator mowy w telefonie nie jest gotowy"));
+            return;
+        }
+        tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, "rc");
+    }
+
+    private static Notification.Action findReply(Notification n) {
+        List<Notification.Action> all = new ArrayList<>();
+        if (n.actions != null) all.addAll(Arrays.asList(n.actions));
+        try {
+            all.addAll(new Notification.WearableExtender(n).getActions());
+        } catch (Exception ignored) {
+        }
+        for (Notification.Action a : all) {
+            RemoteInput[] r = a.getRemoteInputs();
+            if (r == null) continue;
+            for (RemoteInput ri : r) {
+                if (ri.getAllowFreeFormInput()) return a;
+            }
+        }
+        return null;
     }
 
     // ------------------------------------------------------------------ dane do wysłania
@@ -412,6 +513,7 @@ public class PhoneService extends NotificationListenerService implements Link.Ha
 
     @Override
     public void onNotificationRemoved(StatusBarNotification sbn) {
+        replyActions.remove(sbn.getKey());
         if (!isConnected()) return;
         send(J.obj("t", "notif_rm", "key", sbn.getKey()));
     }
@@ -433,7 +535,10 @@ public class PhoneService extends NotificationListenerService implements Link.Ha
             CharSequence text = ex.getCharSequence(Notification.EXTRA_BIG_TEXT);
             if (text == null) text = ex.getCharSequence(Notification.EXTRA_TEXT);
             if (title == null && text == null) return null;
+            Notification.Action ra = findReply(n);
+            if (ra != null) replyActions.put(sbn.getKey(), ra);
             return J.obj("t", "notif",
+                    "reply", ra != null,
                     "key", sbn.getKey(),
                     "pkg", pkg,
                     "app", appLabel(pkg),

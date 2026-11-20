@@ -84,6 +84,26 @@ final class Store {
         Collections.sort(notifs, (a, b) -> Long.compare(b.optLong("time"), a.optLong("time")));
     }
 
+    static JSONObject findNotif(String key) {
+        if (key == null) return null;
+        for (JSONObject o : notifs) {
+            if (key.equals(o.optString("key"))) return o;
+        }
+        return null;
+    }
+
+    /** Kontakt o dokładnie takiej nazwie (np. nadawca SMS-a) – pierwszy numer albo null. */
+    static String numberForName(String name) {
+        if (name == null || name.isEmpty()) return null;
+        for (JSONObject c : contacts) {
+            if (name.equalsIgnoreCase(c.optString("n"))) {
+                JSONArray p = c.optJSONArray("p");
+                if (p != null && p.length() > 0) return p.optString(0);
+            }
+        }
+        return null;
+    }
+
     static void removeNotif(String key) {
         for (int i = notifs.size() - 1; i >= 0; i--) {
             if (notifs.get(i).optString("key").equals(key)) notifs.remove(i);

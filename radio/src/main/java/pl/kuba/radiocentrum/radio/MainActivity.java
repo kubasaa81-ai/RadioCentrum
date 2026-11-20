@@ -34,6 +34,18 @@ import java.util.Locale;
 
 public class MainActivity extends Activity {
 
+    static final String EXTRA_REPLY = "reply_key";
+
+    private static final String[] QUICK_REPLIES = {
+            "Prowadzę, odezwę się później.",
+            "Jestem w drodze, będę niedługo.",
+            "Oddzwonię, jak tylko zaparkuję.",
+            "Nie mogę teraz rozmawiać.",
+            "OK 👍",
+            "Tak.",
+            "Nie."};
+    private static final int[] QUICK_COLORS = {Ui.BLUE, Ui.TEAL, Ui.PURPLE, Ui.ORANGE, Ui.GREEN, 0xFF2E7D32, 0xFFC62828};
+
     private static final int T_NOTIF = 0, T_CALLS = 1, T_CONTACTS = 2, T_KEYPAD = 3, T_SETTINGS = 4;
     private static final String[] TAB_NAMES = {"🔔 Powiadomienia", "📞 Połączenia", "📒 Kontakty", "⌨ Klawiatura", "⚙ Ustawienia"};
     private static final int[] TAB_COLORS = {Ui.ORANGE, Ui.GREEN, Ui.BLUE, Ui.PURPLE, Ui.SLATE};
@@ -88,6 +100,25 @@ public class MainActivity extends Activity {
 
         setContentView(root);
         show(Popup.canDraw(this) ? T_NOTIF : T_SETTINGS);
+        handleIntent(getIntent());
+    }
+
+    @Override
+    protected void onNewIntent(Intent i) {
+        super.onNewIntent(i);
+        setIntent(i);
+        handleIntent(i);
+    }
+
+    private void handleIntent(Intent i) {
+        if (i == null) return;
+        String key = i.getStringExtra(EXTRA_REPLY);
+        if (key == null) return;
+        i.removeExtra(EXTRA_REPLY);
+        if (tab != T_NOTIF) show(T_NOTIF);
+        JSONObject m = Store.findNotif(key);
+        if (m != null) openReply(m);
+        else toast("Ta wiadomość została już zamknięta w telefonie");
     }
 
     @Override
@@ -246,6 +277,7 @@ public class MainActivity extends Activity {
             }
         };
         lv.setAdapter(notifAdapter);
+        lv.setOnItemClickListener((p, v, pos, id) -> notifActions(Store.notifs.get(pos)));
         col.addView(withEmpty(lv, "Brak powiadomień.\nNowe SMS-y i wiadomości pojawią się tutaj i w okienku na górze ekranu."),
                 new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
         col.addView(Ui.button(this, "🗑 Wyczyść listę", 0xFFC62828, 18, v -> {
@@ -486,6 +518,118 @@ public class MainActivity extends Activity {
                 .show();
     }
 
+    private void notifActions(final JSONObject m) {
+        final List<String> labels = new ArrayList<>();
+        final List<Runnable> acts = new ArrayList<>();
+        labels.add("🔊 Przeczytaj na głos");
+        acts.add(() -> speak(m));
+        if (m.optBoolean("reply")) {
+            labels.add("✉ Odpowiedz");
+            acts.add(() -> openReply(m));
+        }
+        final String title = m.optString("title");
+        final String num = Store.numberForName(title);
+        if (num != null) {
+            labels.add("📞 Zadzwoń do: " + title);
+            acts.add(() -> confirmDial(title, num));
+        }
+        labels.add("🗑 Usuń z listy");
+        acts.add(() -> {
+            Store.removeNotif(m.optString("key"));
+            Store.changed();
+        });
+        new AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                .setTitle(title.isEmpty() ? m.optString("app") : title)
+                .setItems(labels.toArray(new String[0]), (d, w) -> acts.get(w).run())
+                .setNegativeButton("Anuluj", null)
+                .show();
+    }
+
+    private void speak(JSONObject m) {
+        if (!RadioService.sendToPhone(J.obj("t", "speak", "text", Popup.speech(m)))) {
+            toast("Brak połączenia z telefonem");
+        }
+    }
+
+    /** Okno odpowiedzi: gotowe odpowiedzi jednym kliknięciem albo własny tekst. */
+    private void openReply(final JSONObject m) {
+        final String key = m.optString("key");
+        final String who = m.optString("title");
+        ScrollView sv = new ScrollView(this);
+        LinearLayout col = new LinearLayout(this);
+        col.setOrientation(LinearLayout.VERTICAL);
+        int p = Ui.dp(this, 12);
+        col.setPadding(p, p, p, p);
+        sv.addView(col);
+
+        String text = m.optString("text");
+        if (!text.isEmpty()) {
+            TextView t = Ui.text(this, "„" + text + "”", 18, 0xFFE0E0E0, false);
+            t.setPadding(p, p, p, p);
+            t.setBackground(Ui.round(this, Ui.CARD, 12));
+            col.addView(t, Ui.lp(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, 0, this, 4));
+        }
+
+        final AlertDialog dlg = new AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                .setTitle("✉ Odpowiedz" + (who.isEmpty() ? "" : ": " + who))
+                .setView(sv)
+                .setNegativeButton("Anuluj", null)
+                .create();
+
+        LinearLayout grid = null;
+        for (int i = 0; i < QUICK_REPLIES.length; i++) {
+            if (i % 2 == 0) {
+                grid = new LinearLayout(this);
+                grid.setOrientation(LinearLayout.HORIZONTAL);
+                col.addView(grid);
+            }
+            final String q = QUICK_REPLIES[i];
+            grid.addView(Ui.button(this, q, QUICK_COLORS[i % QUICK_COLORS.length], 18, v -> {
+                sendReply(key, q);
+                dlg.dismiss();
+            }), Ui.lp(0, ViewGroup.LayoutParams.MATCH_PARENT, 1, this, 4));
+        }
+        if (QUICK_REPLIES.length % 2 == 1 && grid != null) {
+            View spacer = new View(this);
+            grid.addView(spacer, Ui.lp(0, 1, 1, this, 4));
+        }
+
+        LinearLayout own = new LinearLayout(this);
+        own.setOrientation(LinearLayout.HORIZONTAL);
+        own.setGravity(Gravity.CENTER_VERTICAL);
+        final EditText et = new EditText(this);
+        et.setHint("Własna odpowiedź…");
+        et.setHintTextColor(0xFF78909C);
+        et.setTextColor(Ui.WHITE);
+        et.setTextSize(20);
+        et.setBackground(Ui.round(this, Ui.CARD, 12));
+        et.setPadding(p, Ui.dp(this, 10), p, Ui.dp(this, 10));
+        own.addView(et, Ui.lp(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1, this, 4));
+        own.addView(Ui.button(this, "📨 Wyślij", Ui.GREEN, 20, v -> {
+            String s = et.getText().toString().trim();
+            if (s.isEmpty()) {
+                toast("Wpisz tekst albo wybierz gotową odpowiedź");
+                return;
+            }
+            sendReply(key, s);
+            dlg.dismiss();
+        }), Ui.lp(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, 0, this, 4));
+        LinearLayout.LayoutParams op = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        op.topMargin = Ui.dp(this, 8);
+        col.addView(own, op);
+
+        dlg.show();
+    }
+
+    private void sendReply(String key, String text) {
+        if (RadioService.sendToPhone(J.obj("t", "reply", "key", key, "text", text))) {
+            toast("Wysyłam: " + text);
+        } else {
+            toast("Brak połączenia z telefonem");
+        }
+    }
+
     // ------------------------------------------------------------------ klawiatura
 
     private View buildKeypad() {
@@ -632,9 +776,20 @@ public class MainActivity extends Activity {
         }), Ui.lp(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1, this, 6));
         col.addView(r3);
 
+        final Button auto = Ui.button(this, autoLabel(), Ui.ORANGE, 18, null);
+        auto.setOnClickListener(v -> {
+            Prefs.setAutoRead(this, !Prefs.autoRead(this));
+            auto.setText(autoLabel());
+        });
+        col.addView(auto, Ui.lp(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, 0, this, 6));
+
         col.addView(Ui.button(this, "🔄 Pobierz wszystko ponownie z telefonu", 0xFF3949AB, 18, v -> sync()),
                 Ui.lp(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, 0, this, 6));
         return sv;
+    }
+
+    private String autoLabel() {
+        return "🔊 Czytaj nowe wiadomości automatycznie: " + (Prefs.autoRead(this) ? "WŁĄCZONE" : "wyłączone");
     }
 
     private String settingsText() {

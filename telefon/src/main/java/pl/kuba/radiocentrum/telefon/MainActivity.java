@@ -123,8 +123,8 @@ public class MainActivity extends Activity {
                 + mark(notifAccess()) + "  Dostęp do powiadomień\n"
                 + mark(battery()) + "  Bateria bez ograniczeń\n"
                 + mark(mac != null) + "  Radio: " + radio);
-        codeView.setText("Zapas – połączenie przez Wi-Fi (hotspot telefonu)\nKod: " + Prefs.code(this)
-                + "\nWpisz go w aplikacji na radiu → ⚙ Ustawienia.");
+        codeView.setText("Połączenie przez Wi-Fi (router w aucie albo hotspot telefonu)\nKod: " + Prefs.code(this)
+                + "\nWpisz go raz w aplikacji na radiu → ⚙ Ustawienia → Zapisz kod.");
     }
 
     private static String mark(boolean ok) {

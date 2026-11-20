@@ -1,6 +1,7 @@
 package pl.kuba.radiocentrum.radio;
 
 import android.content.Context;
+import android.content.Intent;
 import android.graphics.PixelFormat;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Build;
@@ -91,6 +92,32 @@ final class Popup {
             x.setEllipsize(TextUtils.TruncateAt.END);
             card.addView(x);
         }
+        final String key = m.optString("key");
+        final String speech = speech(m);
+        LinearLayout row = new LinearLayout(app);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.addView(Ui.buttonFit(app, "🔊 Przeczytaj", Ui.BLUE, 18, v -> {
+            if (!RadioService.sendToPhone(J.obj("t", "speak", "text", speech))) {
+                android.widget.Toast.makeText(app, "Brak połączenia z telefonem", android.widget.Toast.LENGTH_SHORT).show();
+            }
+            h.removeCallbacks(autoHide);
+            h.postDelayed(autoHide, 15000);
+        }), Ui.lp(0, Ui.dp(app, 54), 1, app, 5));
+        if (m.optBoolean("reply")) {
+            row.addView(Ui.buttonFit(app, "✉ Odpowiedz", Ui.GREEN, 18, v -> {
+                hideNotif();
+                Intent i = new Intent(app, MainActivity.class);
+                i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                i.putExtra(MainActivity.EXTRA_REPLY, key);
+                app.startActivity(i);
+            }), Ui.lp(0, Ui.dp(app, 54), 1, app, 5));
+        }
+        row.addView(Ui.buttonFit(app, "✖ Zamknij", Ui.SLATE, 18, v -> hideNotif()),
+                Ui.lp(0, Ui.dp(app, 54), 1, app, 5));
+        LinearLayout.LayoutParams rp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        rp.topMargin = Ui.dp(app, 6);
+        card.addView(row, rp);
         card.setOnClickListener(v -> hideNotif());
         try {
             wm().addView(card, params(callView != null ? 200 : 14));
@@ -100,7 +127,19 @@ final class Popup {
             return;
         }
         h.removeCallbacks(autoHide);
-        h.postDelayed(autoHide, 10000);
+        h.postDelayed(autoHide, 15000);
+    }
+
+    /** Tekst do przeczytania na głos. */
+    static String speech(JSONObject m) {
+        String app = m.optString("app");
+        String title = m.optString("title");
+        String text = m.optString("text");
+        StringBuilder sb = new StringBuilder();
+        sb.append("SMS".equals(app) ? "SMS" : "Wiadomość " + app);
+        if (!title.isEmpty()) sb.append(" od ").append(title);
+        sb.append(". ").append(text);
+        return sb.toString();
     }
 
     static void hideNotif() {
@@ -152,21 +191,21 @@ final class Popup {
         LinearLayout row = new LinearLayout(app);
         row.setOrientation(LinearLayout.HORIZONTAL);
         if (ringing) {
-            row.addView(Ui.button(app, "✅ Odbierz", Ui.GREEN, 20,
+            row.addView(Ui.buttonFit(app, "✅ Odbierz", Ui.GREEN, 20,
                             v -> RadioService.sendToPhone(J.obj("t", "answer"))),
                     Ui.lp(0, Ui.dp(app, 60), 1, app, 6));
-            row.addView(Ui.button(app, "⛔ Odrzuć", Ui.RED, 20, v -> {
+            row.addView(Ui.buttonFit(app, "⛔ Odrzuć", Ui.RED, 20, v -> {
                         RadioService.sendToPhone(J.obj("t", "reject"));
                         hideCall();
                     }),
                     Ui.lp(0, Ui.dp(app, 60), 1, app, 6));
         } else {
-            row.addView(Ui.button(app, "⛔ Rozłącz", Ui.RED, 20, v -> {
+            row.addView(Ui.buttonFit(app, "⛔ Rozłącz", Ui.RED, 20, v -> {
                         RadioService.sendToPhone(J.obj("t", "reject"));
                         hideCall();
                     }),
                     Ui.lp(0, Ui.dp(app, 60), 1, app, 6));
-            row.addView(Ui.button(app, "Schowaj", Ui.SLATE, 20, v -> removeCallView()),
+            row.addView(Ui.buttonFit(app, "Schowaj", Ui.SLATE, 20, v -> removeCallView()),
                     Ui.lp(0, Ui.dp(app, 60), 1, app, 6));
         }
         LinearLayout.LayoutParams rp = new LinearLayout.LayoutParams(
