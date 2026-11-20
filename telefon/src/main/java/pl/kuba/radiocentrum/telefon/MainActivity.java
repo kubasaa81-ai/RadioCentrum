@@ -63,7 +63,7 @@ public class MainActivity extends Activity {
 
         col.addView(text("Radio Centrum – telefon", 24, 0xFFFFFFFF, true));
         col.addView(text("Działa w tle i wysyła do radia powiadomienia, połączenia i kontakty. "
-                + "Kroki 1–4 zrób tylko raz.", 15, 0xFFB0BEC5, false), lp(8));
+                + "Kroki 1–5 zrób tylko raz.", 15, 0xFFB0BEC5, false), lp(8));
 
         status = text("", 18, 0xFFFFFFFF, true);
         status.setPadding(p, p, p, p);
@@ -78,6 +78,7 @@ public class MainActivity extends Activity {
         col.addView(button("2. Dostęp do powiadomień", 0xFF8E24AA, v -> openNotifAccess()), lp(10));
         col.addView(button("3. Bateria bez ograniczeń", 0xFFFB8C00, v -> askBattery()), lp(10));
         col.addView(button("4. Wybierz radio (Bluetooth)", 0xFF43A047, v -> chooseRadio()), lp(10));
+        col.addView(button("5. Wyświetlanie nad aplikacjami (dyktowanie)", 0xFFD81B60, v -> openOverlay()), lp(10));
         col.addView(button("Ustawienia Bluetooth (parowanie z radiem)", 0xFF00897B,
                 v -> safeStart(new Intent(Settings.ACTION_BLUETOOTH_SETTINGS))), lp(10));
         col.addView(button("Wyślij ponownie wszystko do radia", 0xFF3949AB, v -> resend()), lp(10));
@@ -122,7 +123,8 @@ public class MainActivity extends Activity {
         checks.setText(mark(allPerms()) + "  Uprawnienia\n"
                 + mark(notifAccess()) + "  Dostęp do powiadomień\n"
                 + mark(battery()) + "  Bateria bez ograniczeń\n"
-                + mark(mac != null) + "  Radio: " + radio);
+                + mark(mac != null) + "  Radio: " + radio + "\n"
+                + mark(Settings.canDrawOverlays(this)) + "  Wyświetlanie nad aplikacjami (dyktowanie)");
         codeView.setText("Połączenie przez Wi-Fi (router w aucie albo hotspot telefonu)\nKod: " + Prefs.code(this)
                 + "\nWpisz go raz w aplikacji na radiu → ⚙ Ustawienia → Zapisz kod.");
     }
@@ -138,6 +140,7 @@ public class MainActivity extends Activity {
                 Manifest.permission.READ_PHONE_STATE,
                 Manifest.permission.CALL_PHONE,
                 Manifest.permission.SEND_SMS,
+                Manifest.permission.RECORD_AUDIO,
                 Manifest.permission.ANSWER_PHONE_CALLS));
         if (Build.VERSION.SDK_INT >= 31) l.add(Manifest.permission.BLUETOOTH_CONNECT);
         return l.toArray(new String[0]);
@@ -198,6 +201,19 @@ public class MainActivity extends Activity {
                     Uri.parse("package:" + getPackageName())));
         } catch (Exception e) {
             safeStart(new Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS));
+        }
+    }
+
+    private void openOverlay() {
+        if (Settings.canDrawOverlays(this)) {
+            toast("Już ustawione ✅");
+            return;
+        }
+        try {
+            startActivity(new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                    Uri.parse("package:" + getPackageName())));
+        } catch (Exception e) {
+            openAppDetails();
         }
     }
 

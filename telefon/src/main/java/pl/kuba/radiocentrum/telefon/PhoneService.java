@@ -341,6 +341,9 @@ public class PhoneService extends NotificationListenerService implements Link.Ha
                 final String smsText = m.optString("text");
                 sendExec.execute(() -> sendSms(smsNum, smsText));
                 break;
+            case "dictate":
+                main.post(this::startDictation);
+                break;
             case "speak":
                 final String say = m.optString("text");
                 main.post(() -> speak(say));
@@ -414,6 +417,27 @@ public class PhoneService extends NotificationListenerService implements Link.Ha
         } catch (Exception e) {
             send(J.obj("t", "toast", "text", "Nie udało się wysłać odpowiedzi"));
         }
+    }
+
+    /** Radio prosi o dyktowanie – słucha telefon (radio nie ma rozpoznawania mowy). */
+    private void startDictation() {
+        if (Build.VERSION.SDK_INT >= 23 && !Settings.canDrawOverlays(this)) {
+            send(J.obj("t", "dictated", "err",
+                    "W aplikacji na telefonie zrób krok 5 (wyświetlanie nad aplikacjami) – wtedy dyktowanie zadziała"));
+            return;
+        }
+        try {
+            Intent i = new Intent(this, DictateActivity.class);
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_NO_ANIMATION);
+            startActivity(i);
+            send(J.obj("t", "toast", "text", "🎤 Mów teraz – słucha telefon"));
+        } catch (Exception e) {
+            send(J.obj("t", "dictated", "err", "Nie udało się włączyć mikrofonu w telefonie"));
+        }
+    }
+
+    void deliverDictation(String text, String err) {
+        send(J.obj("t", "dictated", "text", text, "err", err));
     }
 
     /** Nowy SMS wpisany lub podyktowany na radiu. */

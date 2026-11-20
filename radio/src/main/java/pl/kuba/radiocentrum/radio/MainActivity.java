@@ -71,6 +71,7 @@ public class MainActivity extends Activity {
     private static final int REQ_SPEECH = 42;
 
     private final Runnable onChange = this::refresh;
+    private static MainActivity active;
     private final android.os.Handler tickH = new android.os.Handler(android.os.Looper.getMainLooper());
     private final Runnable tick = new Runnable() {
         @Override
@@ -142,6 +143,7 @@ public class MainActivity extends Activity {
     protected void onResume() {
         super.onResume();
         RadioService.start(this);
+        active = this;
         Store.addListener(onChange);
         refresh();
         tickH.post(tick);
@@ -150,6 +152,7 @@ public class MainActivity extends Activity {
     @Override
     protected void onPause() {
         super.onPause();
+        if (active == this) active = null;
         Store.removeListener(onChange);
         tickH.removeCallbacks(tick);
     }
@@ -665,33 +668,49 @@ public class MainActivity extends Activity {
         if (dictateNow) dictate(et);
     }
 
-    /** Rozpoznawanie mowy w radiu (jeśli radio ma usługę rozpoznawania mowy). */
+    /** Dyktowanie: słucha telefon (Samsung ma polskie rozpoznawanie mowy); bez połączenia – próbuje radio. */
     private void dictate(EditText target) {
         dictateTarget = target;
+        if (RadioService.sendToPhone(J.obj("t", "dictate"))) return;
         Intent i = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
         i.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
         i.putExtra(RecognizerIntent.EXTRA_LANGUAGE, "pl-PL");
-        i.putExtra(RecognizerIntent.EXTRA_PROMPT, "Powiedz treść wiadomości");
         try {
             startActivityForResult(i, REQ_SPEECH);
-        } catch (ActivityNotFoundException e) {
-            toast("To radio nie ma rozpoznawania mowy – użyj mikrofonu na klawiaturze albo wpisz tekst");
         } catch (Exception e) {
-            toast("Nie udało się włączyć dyktowania");
+            toast("Brak połączenia z telefonem – nie ma kto słuchać. Wpisz tekst.");
         }
+    }
+
+    /** Tekst podyktowany do telefonu wraca tutaj. */
+    static void deliverDictation(android.content.Context c, String text, String err) {
+        MainActivity a = active;
+        if (err != null && !err.isEmpty()) {
+            Toast.makeText(c, err, Toast.LENGTH_LONG).show();
+            return;
+        }
+        if (text == null || text.isEmpty()) return;
+        if (a == null || a.dictateTarget == null) {
+            Toast.makeText(c, "Podyktowano: " + text, Toast.LENGTH_LONG).show();
+            return;
+        }
+        a.appendDictation(text);
+    }
+
+    private void appendDictation(String said) {
+        if (dictateTarget == null || said == null || said.isEmpty()) return;
+        said = said.substring(0, 1).toUpperCase(new Locale("pl", "PL")) + said.substring(1);
+        String cur = dictateTarget.getText().toString().trim();
+        dictateTarget.setText(cur.isEmpty() ? said : cur + " " + said);
+        dictateTarget.setSelection(dictateTarget.getText().length());
     }
 
     @Override
     protected void onActivityResult(int req, int res, Intent data) {
         super.onActivityResult(req, res, data);
-        if (req != REQ_SPEECH || res != RESULT_OK || data == null || dictateTarget == null) return;
+        if (req != REQ_SPEECH || res != RESULT_OK || data == null) return;
         ArrayList<String> r = data.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS);
-        if (r == null || r.isEmpty()) return;
-        String said = r.get(0);
-        if (said.length() > 0) said = said.substring(0, 1).toUpperCase(new Locale("pl", "PL")) + said.substring(1);
-        String cur = dictateTarget.getText().toString().trim();
-        dictateTarget.setText(cur.isEmpty() ? said : cur + " " + said);
-        dictateTarget.setSelection(dictateTarget.getText().length());
+        if (r != null && !r.isEmpty()) appendDictation(r.get(0));
     }
 
     // ------------------------------------------------------------------ klawiatura
