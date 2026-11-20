@@ -329,7 +329,7 @@ public class RadioService extends Service implements Link.Handler {
             case "notif":
                 if (Store.putNotif(m) && !m.optBoolean("old")) {
                     Popup.showNotif(this, m);
-                    if (Prefs.autoRead(this)) Mowa.speak(Popup.speech(m));
+                    if (Prefs.autoRead(this)) Mowa.speak(this, Popup.speech(m));
                 }
                 break;
             case "dictated":

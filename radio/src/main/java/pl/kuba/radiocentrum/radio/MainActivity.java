@@ -576,7 +576,7 @@ public class MainActivity extends Activity {
     }
 
     private void speak(JSONObject m) {
-        if (!Mowa.speak(Popup.speech(m))) toast("Brak połączenia z telefonem");
+        if (!Mowa.speak(this, Popup.speech(m))) toast("Brak połączenia z telefonem");
     }
 
     private void openReply(final JSONObject m) {
@@ -862,6 +862,20 @@ public class MainActivity extends Activity {
         }), Ui.lp(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1, this, 6));
         col.addView(r3);
 
+        final Button voice = Ui.button(this, voiceLabel(), 0xFF6D4C41, 18, null);
+        voice.setOnClickListener(v -> {
+            Prefs.setVoiceMode(this, (Prefs.voiceMode(this) + 1) % Mowa.MODES.length);
+            voice.setText(voiceLabel());
+            refreshStatus();
+        });
+        LinearLayout rv = new LinearLayout(this);
+        rv.setOrientation(LinearLayout.HORIZONTAL);
+        rv.addView(voice, Ui.lp(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.4f, this, 6));
+        rv.addView(Ui.button(this, "🔊 Test głosu", Ui.BLUE, 18, v -> {
+            if (!Mowa.speak(this, "Test. Radio Centrum czyta wiadomości.")) toast("Brak połączenia z telefonem");
+        }), Ui.lp(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1, this, 6));
+        col.addView(rv);
+
         final Button auto = Ui.button(this, autoLabel(), Ui.ORANGE, 18, null);
         auto.setOnClickListener(v -> {
             Prefs.setAutoRead(this, !Prefs.autoRead(this));
@@ -874,6 +888,10 @@ public class MainActivity extends Activity {
         return sv;
     }
 
+    private String voiceLabel() {
+        return "🗣 Kto czyta: " + Mowa.MODES[Prefs.voiceMode(this)] + "  (kliknij, by zmienić)";
+    }
+
     private String autoLabel() {
         return "🔊 Czytaj nowe wiadomości automatycznie: " + (Prefs.autoRead(this) ? "WŁĄCZONE" : "wyłączone");
     }
@@ -881,7 +899,7 @@ public class MainActivity extends Activity {
     private String settingsText() {
         return (Popup.canDraw(this) ? "✅ Okienka nad innymi aplikacjami: włączone"
                 : "❌ Okienka nad innymi aplikacjami: WYŁĄCZONE – kliknij niebieski przycisk")
-                + "\n" + Mowa.info()
+                + "\n" + Mowa.info(this)
                 + "\n" + RadioService.btInfo
                 + "\n" + RadioService.wifiInfo
                 + "\nZapisany kod Wi-Fi: " + (Prefs.code(this).isEmpty() ? "brak" : Prefs.code(this))
