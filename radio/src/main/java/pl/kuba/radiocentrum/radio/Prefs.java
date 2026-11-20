@@ -19,8 +19,8 @@ final class Prefs {
     }
 
     static int voiceMode(Context c) {
-        int v = c.getSharedPreferences("rc", Context.MODE_PRIVATE).getInt("voice", 0);
-        return v < 0 || v > 3 ? 0 : v;
+        int v = c.getSharedPreferences("rc", Context.MODE_PRIVATE).getInt("voice", 2);
+        return v < 0 || v > 3 ? 2 : v;
     }
 
     static void setVoiceMode(Context c, int v) {
