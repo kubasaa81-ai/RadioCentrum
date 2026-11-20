@@ -118,7 +118,13 @@ final class Popup {
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
         rp.topMargin = Ui.dp(app, 6);
         card.addView(row, rp);
-        card.setOnClickListener(v -> hideNotif());
+        card.setOnClickListener(v -> {
+            hideNotif();
+            Intent i = new Intent(app, MainActivity.class);
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            i.putExtra(MainActivity.EXTRA_OPEN, key);
+            app.startActivity(i);
+        });
         try {
             wm().addView(card, params(callView != null ? 200 : 14));
             notifView = card;

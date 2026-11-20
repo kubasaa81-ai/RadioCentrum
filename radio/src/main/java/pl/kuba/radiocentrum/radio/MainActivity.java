@@ -37,6 +37,7 @@ import java.util.Locale;
 public class MainActivity extends Activity {
 
     static final String EXTRA_REPLY = "reply_key";
+    static final String EXTRA_OPEN = "open_key";
 
     private static final String[] QUICK_REPLIES = {
             "Prowadzę, odezwę się później.",
@@ -125,11 +126,15 @@ public class MainActivity extends Activity {
     private void handleIntent(Intent i) {
         if (i == null) return;
         String key = i.getStringExtra(EXTRA_REPLY);
+        boolean reply = key != null;
+        if (key == null) key = i.getStringExtra(EXTRA_OPEN);
         if (key == null) return;
         i.removeExtra(EXTRA_REPLY);
+        i.removeExtra(EXTRA_OPEN);
         if (tab != T_NOTIF) show(T_NOTIF);
         JSONObject m = Store.findNotif(key);
-        if (m != null) openReply(m);
+        if (m != null && reply) openReply(m);
+        else if (m != null) notifActions(m);
         else toast("Ta wiadomość została już zamknięta w telefonie");
     }
 
@@ -528,216 +533,138 @@ public class MainActivity extends Activity {
             contactActions(name, p.optString(0));
             return;
         }
-        final String[] items = new String[p.length()];
-        for (int i = 0; i < p.length(); i++) items[i] = "☎ " + p.optString(i);
-        new AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
-                .setTitle(name + " – który numer?")
-                .setItems(items, (d, w) -> contactActions(name, p.optString(w)))
-                .setNegativeButton("Anuluj", null)
-                .show();
+        Okno o = new Okno(this, name, "Który numer?");
+        for (int i = 0; i < p.length(); i++) {
+            final String num = p.optString(i);
+            o.row(o.btn("☎ " + num, i % 2 == 0 ? Ui.BLUE : Ui.TEAL, true, () -> contactActions(name, num)));
+        }
+        o.cancel("✖ Anuluj");
+        o.show();
     }
 
+    /** Okno wiadomości: pełna treść + Odsłuchaj / Odpowiedz / Zadzwoń / Usuń. */
     private void notifActions(final JSONObject m) {
-        final List<String> labels = new ArrayList<>();
-        final List<Runnable> acts = new ArrayList<>();
-        labels.add("🔊 Przeczytaj na głos");
-        acts.add(() -> speak(m));
-        if (m.optBoolean("reply")) {
-            labels.add("✉ Odpowiedz");
-            acts.add(() -> openReply(m));
-        }
         final String title = m.optString("title");
+        final String app = m.optString("app");
+        String sub = ("SMS".equals(app) ? "✉ SMS" : "🔔 " + app) + "  ·  " + Ui.time(m.optLong("time"));
+        final Okno o = new Okno(this, title.isEmpty() ? app : title, sub);
+        String text = m.optString("text");
+        if (!text.isEmpty()) o.message(text, 22);
+
+        Button reply = m.optBoolean("reply")
+                ? o.btn("✉ Odpowiedz", Ui.GREEN, true, () -> openReply(m)) : null;
+        o.row(o.btn("🔊 Odsłuchaj", Ui.BLUE, false, () -> speak(m)), reply);
+
         final String num = Store.numberForName(title);
-        if (num != null) {
-            labels.add("📞 Zadzwoń do: " + title);
-            acts.add(() -> confirmDial(title, num));
-        }
-        labels.add("🗑 Usuń z listy");
-        acts.add(() -> {
+        Button call = num != null ? o.btn("📞 Zadzwoń", Ui.TEAL, true, () -> dial(num, title)) : null;
+        o.row(call, o.btn("🗑 Usuń", 0xFFC62828, true, () -> {
             Store.removeNotif(m.optString("key"));
             Store.changed();
-        });
-        new AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
-                .setTitle(title.isEmpty() ? m.optString("app") : title)
-                .setItems(labels.toArray(new String[0]), (d, w) -> acts.get(w).run())
-                .setNegativeButton("Anuluj", null)
-                .show();
+        }));
+        o.cancel("✖ Zamknij");
+        o.show();
     }
 
     private void speak(JSONObject m) {
-        if (!Mowa.speak(Popup.speech(m))) {
-            toast("Brak połączenia z telefonem");
-        }
+        if (!Mowa.speak(Popup.speech(m))) toast("Brak połączenia z telefonem");
     }
 
-    /** Okno odpowiedzi: gotowe odpowiedzi jednym kliknięciem albo własny tekst. */
     private void openReply(final JSONObject m) {
         final String key = m.optString("key");
-        final String who = m.optString("title");
-        ScrollView sv = new ScrollView(this);
-        LinearLayout col = new LinearLayout(this);
-        col.setOrientation(LinearLayout.VERTICAL);
-        int p = Ui.dp(this, 12);
-        col.setPadding(p, p, p, p);
-        sv.addView(col);
-
-        String text = m.optString("text");
-        if (!text.isEmpty()) {
-            TextView t = Ui.text(this, "„" + text + "”", 18, 0xFFE0E0E0, false);
-            t.setPadding(p, p, p, p);
-            t.setBackground(Ui.round(this, Ui.CARD, 12));
-            col.addView(t, Ui.lp(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, 0, this, 4));
-        }
-
-        final AlertDialog dlg = new AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
-                .setTitle("✉ Odpowiedz" + (who.isEmpty() ? "" : ": " + who))
-                .setView(sv)
-                .setNegativeButton("Anuluj", null)
-                .create();
-
-        LinearLayout grid = null;
-        for (int i = 0; i < QUICK_REPLIES.length; i++) {
-            if (i % 2 == 0) {
-                grid = new LinearLayout(this);
-                grid.setOrientation(LinearLayout.HORIZONTAL);
-                col.addView(grid);
+        String who = m.optString("title");
+        composer("✉ Odpowiedz" + (who.isEmpty() ? "" : ": " + who), m.optString("text"), false, t -> {
+            if (RadioService.sendToPhone(J.obj("t", "reply", "key", key, "text", t))) {
+                toast("Wysyłam odpowiedź…");
+                return true;
             }
-            final String q = QUICK_REPLIES[i];
-            grid.addView(Ui.button(this, q, QUICK_COLORS[i % QUICK_COLORS.length], 18, v -> {
-                sendReply(key, q);
-                dlg.dismiss();
-            }), Ui.lp(0, ViewGroup.LayoutParams.MATCH_PARENT, 1, this, 4));
-        }
-        if (QUICK_REPLIES.length % 2 == 1 && grid != null) {
-            View spacer = new View(this);
-            grid.addView(spacer, Ui.lp(0, 1, 1, this, 4));
-        }
-
-        LinearLayout own = new LinearLayout(this);
-        own.setOrientation(LinearLayout.HORIZONTAL);
-        own.setGravity(Gravity.CENTER_VERTICAL);
-        final EditText et = new EditText(this);
-        et.setHint("Własna odpowiedź…");
-        et.setHintTextColor(0xFF78909C);
-        et.setTextColor(Ui.WHITE);
-        et.setTextSize(20);
-        et.setBackground(Ui.round(this, Ui.CARD, 12));
-        et.setPadding(p, Ui.dp(this, 10), p, Ui.dp(this, 10));
-        own.addView(et, Ui.lp(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1, this, 4));
-        own.addView(Ui.button(this, "📨 Wyślij", Ui.GREEN, 20, v -> {
-            String s = et.getText().toString().trim();
-            if (s.isEmpty()) {
-                toast("Wpisz tekst albo wybierz gotową odpowiedź");
-                return;
-            }
-            sendReply(key, s);
-            dlg.dismiss();
-        }), Ui.lp(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, 0, this, 4));
-        LinearLayout.LayoutParams op = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        op.topMargin = Ui.dp(this, 8);
-        col.addView(own, op);
-
-        dlg.show();
-    }
-
-    private void sendReply(String key, String text) {
-        if (RadioService.sendToPhone(J.obj("t", "reply", "key", key, "text", text))) {
-            toast("Wysyłam: " + text);
-        } else {
             toast("Brak połączenia z telefonem");
-        }
+            return false;
+        });
     }
 
-    /** Kontakt: zadzwoń albo napisz SMS. */
+    /** Kontakt: zadzwoń albo SMS. */
     private void contactActions(final String name, final String num) {
-        String title = (name == null || name.isEmpty()) ? num : name + "\n" + num;
-        new AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
-                .setTitle(title)
-                .setItems(new String[]{"📞 Zadzwoń", "✉ Napisz SMS (możesz podyktować)"}, (d, w) -> {
-                    if (w == 0) dial(num, name);
-                    else openSms(name, num);
-                })
-                .setNegativeButton("Anuluj", null)
-                .show();
+        boolean hasName = name != null && !name.isEmpty();
+        Okno o = new Okno(this, hasName ? name : num, hasName ? num : null);
+        o.row(o.btn("📞 Zadzwoń", Ui.GREEN, true, () -> dial(num, name)),
+                o.btn("✉ Napisz SMS", Ui.BLUE, true, () -> openSms(name, num)));
+        o.cancel("✖ Anuluj");
+        o.show();
     }
 
-    /** Nowy SMS: dyktowanie głosem, gotowe teksty albo wpisanie. */
     private void openSms(final String name, final String num) {
-        ScrollView sv = new ScrollView(this);
-        LinearLayout col = new LinearLayout(this);
-        col.setOrientation(LinearLayout.VERTICAL);
-        int p = Ui.dp(this, 12);
-        col.setPadding(p, p, p, p);
-        sv.addView(col);
-
-        final EditText et = new EditText(this);
-        et.setHint("Treść SMS-a – kliknij 🎤 i mów");
-        et.setHintTextColor(0xFF78909C);
-        et.setTextColor(Ui.WHITE);
-        et.setTextSize(21);
-        et.setMinLines(2);
-        et.setBackground(Ui.round(this, Ui.CARD, 12));
-        et.setPadding(p, Ui.dp(this, 10), p, Ui.dp(this, 10));
-        col.addView(et, Ui.lp(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, 0, this, 4));
-
-        final AlertDialog dlg = new AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
-                .setTitle("✉ SMS do: " + ((name == null || name.isEmpty()) ? num : name))
-                .setView(sv)
-                .setNegativeButton("Anuluj", null)
-                .create();
-
-        LinearLayout act = new LinearLayout(this);
-        act.setOrientation(LinearLayout.HORIZONTAL);
-        act.addView(Ui.button(this, "🎤 Dyktuj", Ui.PURPLE, 22, v -> dictate(et)),
-                Ui.lp(0, Ui.dp(this, 64), 1, this, 4));
-        act.addView(Ui.button(this, "⌫ Wyczyść", Ui.ORANGE, 20, v -> et.setText("")),
-                Ui.lp(0, Ui.dp(this, 64), 1, this, 4));
-        act.addView(Ui.button(this, "📨 Wyślij", Ui.GREEN, 22, v -> {
-            String t = et.getText().toString().trim();
-            if (t.isEmpty()) {
-                toast("Najpierw podyktuj albo wpisz treść");
-                return;
-            }
+        String who = (name == null || name.isEmpty()) ? num : name;
+        composer("✉ SMS do: " + who, null, true, t -> {
             if (RadioService.sendToPhone(J.obj("t", "sms", "num", num, "text", t))) {
                 toast("Wysyłam SMS…");
-                dlg.dismiss();
-            } else {
-                toast("Brak połączenia z telefonem");
+                return true;
             }
-        }), Ui.lp(0, Ui.dp(this, 64), 1, this, 4));
-        col.addView(act);
-
-        col.addView(Ui.text(this, "Gotowe teksty (kliknij, żeby wstawić):", 16, Ui.GREY, false),
-                Ui.lp(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, 0, this, 4));
-        LinearLayout grid = null;
-        for (int i = 0; i < QUICK_REPLIES.length; i++) {
-            if (i % 2 == 0) {
-                grid = new LinearLayout(this);
-                grid.setOrientation(LinearLayout.HORIZONTAL);
-                col.addView(grid);
-            }
-            final String q = QUICK_REPLIES[i];
-            grid.addView(Ui.button(this, q, 0xFF2E3B4E, 17, v -> et.setText(q)),
-                    Ui.lp(0, ViewGroup.LayoutParams.MATCH_PARENT, 1, this, 4));
-        }
-        if (QUICK_REPLIES.length % 2 == 1 && grid != null) {
-            grid.addView(new View(this), Ui.lp(0, 1, 1, this, 4));
-        }
-        dlg.setOnDismissListener(d -> {
-            if (dictateTarget == et) dictateTarget = null;
+            toast("Brak połączenia z telefonem");
+            return false;
         });
-        dlg.show();
-        dictate(et);
     }
 
-    /** Rozpoznawanie mowy w radiu (jeśli radio ma usługę rozpoznawania mowy, np. aplikację Google). */
+    private interface Sender {
+        boolean send(String text);
+    }
+
+    /** Wspólne okno pisania: dyktowanie, gotowe teksty, własny tekst. */
+    private void composer(String title, String original, boolean dictateNow, final Sender sender) {
+        final Okno o = new Okno(this, title, null);
+        if (original != null && !original.isEmpty()) o.message("„" + original + "”", 19);
+
+        final EditText et = new EditText(this);
+        et.setHint("Kliknij 🎤 i mów albo wpisz…");
+        et.setHintTextColor(0xFF78909C);
+        et.setTextColor(Ui.WHITE);
+        et.setTextSize(22);
+        et.setMinLines(2);
+        int p = Ui.dp(this, 14);
+        et.setPadding(p, p, p, p);
+        et.setBackground(Ui.round(this, 0xFF111821, 16));
+        o.view(et);
+
+        o.row(o.btn("🎤 Dyktuj", Ui.PURPLE, false, () -> dictate(et)),
+                o.btn("⌫ Wyczyść", Ui.ORANGE, false, () -> et.setText("")),
+                o.btn("📨 Wyślij", Ui.GREEN, false, () -> {
+                    String t = et.getText().toString().trim();
+                    if (t.isEmpty()) {
+                        toast("Najpierw podyktuj, wpisz albo wybierz gotowy tekst");
+                        return;
+                    }
+                    if (sender.send(t)) o.dismiss();
+                }));
+
+        o.view(Ui.text(this, "Gotowe teksty – kliknij, żeby wysłać od razu:", 17, Ui.GREY, false));
+        for (int i = 0; i < QUICK_REPLIES.length; i += 2) {
+            final String q1 = QUICK_REPLIES[i];
+            Button b1 = o.btn(q1, QUICK_COLORS[i % QUICK_COLORS.length], false, () -> {
+                if (sender.send(q1)) o.dismiss();
+            });
+            Button b2 = null;
+            if (i + 1 < QUICK_REPLIES.length) {
+                final String q2 = QUICK_REPLIES[i + 1];
+                b2 = o.btn(q2, QUICK_COLORS[(i + 1) % QUICK_COLORS.length], false, () -> {
+                    if (sender.send(q2)) o.dismiss();
+                });
+            }
+            o.row(b1, b2);
+        }
+        o.cancel("✖ Anuluj");
+        o.d.setOnDismissListener(d -> {
+            if (dictateTarget == et) dictateTarget = null;
+        });
+        o.show();
+        if (dictateNow) dictate(et);
+    }
+
+    /** Rozpoznawanie mowy w radiu (jeśli radio ma usługę rozpoznawania mowy). */
     private void dictate(EditText target) {
         dictateTarget = target;
         Intent i = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
         i.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
         i.putExtra(RecognizerIntent.EXTRA_LANGUAGE, "pl-PL");
-        i.putExtra(RecognizerIntent.EXTRA_PROMPT, "Powiedz treść SMS-a");
+        i.putExtra(RecognizerIntent.EXTRA_PROMPT, "Powiedz treść wiadomości");
         try {
             startActivityForResult(i, REQ_SPEECH);
         } catch (ActivityNotFoundException e) {
@@ -949,13 +876,7 @@ public class MainActivity extends Activity {
     // ------------------------------------------------------------------ dzwonienie
 
     private void confirmDial(final String name, final String num) {
-        String msg = (name == null || name.isEmpty()) ? num : name + "\n" + num;
-        new AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
-                .setTitle("Zadzwonić?")
-                .setMessage(msg)
-                .setPositiveButton("📞 Zadzwoń", (d, w) -> dial(num, name))
-                .setNegativeButton("Anuluj", null)
-                .show();
+        contactActions(name, num);
     }
 
     private void dial(String num, String name) {
