@@ -137,6 +137,7 @@ public class MainActivity extends Activity {
                 Manifest.permission.READ_CALL_LOG,
                 Manifest.permission.READ_PHONE_STATE,
                 Manifest.permission.CALL_PHONE,
+                Manifest.permission.SEND_SMS,
                 Manifest.permission.ANSWER_PHONE_CALLS));
         if (Build.VERSION.SDK_INT >= 31) l.add(Manifest.permission.BLUETOOTH_CONNECT);
         return l.toArray(new String[0]);

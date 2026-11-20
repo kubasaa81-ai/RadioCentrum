@@ -28,6 +28,7 @@ import android.speech.tts.TextToSpeech;
 import android.service.notification.NotificationListenerService;
 import android.service.notification.StatusBarNotification;
 import android.telecom.TelecomManager;
+import android.telephony.SmsManager;
 import android.telephony.TelephonyManager;
 
 import org.json.JSONArray;
@@ -315,6 +316,11 @@ public class PhoneService extends NotificationListenerService implements Link.Ha
                 final String text = m.optString("text");
                 main.post(() -> reply(key, text));
                 break;
+            case "sms":
+                final String smsNum = m.optString("num");
+                final String smsText = m.optString("text");
+                sendExec.execute(() -> sendSms(smsNum, smsText));
+                break;
             case "speak":
                 final String say = m.optString("text");
                 main.post(() -> speak(say));
@@ -387,6 +393,25 @@ public class PhoneService extends NotificationListenerService implements Link.Ha
             send(J.obj("t", "toast", "text", "Wysłano odpowiedź ✅"));
         } catch (Exception e) {
             send(J.obj("t", "toast", "text", "Nie udało się wysłać odpowiedzi"));
+        }
+    }
+
+    /** Nowy SMS wpisany lub podyktowany na radiu. */
+    @SuppressWarnings("deprecation")
+    private void sendSms(String num, String text) {
+        Link l = link;
+        if (num == null || num.isEmpty() || text == null || text.trim().isEmpty()) return;
+        if (!granted(Manifest.permission.SEND_SMS)) {
+            if (l != null) l.send(J.obj("t", "toast", "text", "Telefon nie ma uprawnienia do SMS – w aplikacji na telefonie kliknij krok 1"));
+            return;
+        }
+        try {
+            SmsManager sm = Build.VERSION.SDK_INT >= 31 ? getSystemService(SmsManager.class) : SmsManager.getDefault();
+            sm.sendMultipartTextMessage(num, null, sm.divideMessage(text), null, null);
+            String who = lookupName(num);
+            if (l != null) l.send(J.obj("t", "toast", "text", "SMS wysłany ✅ do " + (who == null ? num : who)));
+        } catch (Exception e) {
+            if (l != null) l.send(J.obj("t", "toast", "text", "Nie udało się wysłać SMS-a"));
         }
     }
 

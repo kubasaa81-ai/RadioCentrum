@@ -3,10 +3,12 @@ package pl.kuba.radiocentrum.radio;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.bluetooth.BluetoothAdapter;
+import android.content.ActivityNotFoundException;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
 import android.provider.Settings;
+import android.speech.RecognizerIntent;
 import android.text.Editable;
 import android.text.InputType;
 import android.text.TextWatcher;
@@ -64,6 +66,8 @@ public class MainActivity extends Activity {
 
     private TextView dialDisplay, dialName;
     private TextView settingsInfo;
+    private EditText dictateTarget;
+    private static final int REQ_SPEECH = 42;
 
     private final Runnable onChange = this::refresh;
 
@@ -362,7 +366,7 @@ public class MainActivity extends Activity {
         lv.setOnItemClickListener((p, v, pos, id) -> {
             JSONObject o = Store.calls.get(pos);
             String num = o.optString("p");
-            if (!num.isEmpty()) confirmDial(displayName(o.optString("n"), num), num);
+            if (!num.isEmpty()) contactActions(displayName(o.optString("n"), num), num);
         });
         col.addView(withEmpty(lv, "Brak historii połączeń.\nPołącz telefon z radiem."),
                 new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
@@ -506,14 +510,14 @@ public class MainActivity extends Activity {
         final JSONArray p = c.optJSONArray("p");
         if (p == null || p.length() == 0) return;
         if (p.length() == 1) {
-            confirmDial(name, p.optString(0));
+            contactActions(name, p.optString(0));
             return;
         }
         final String[] items = new String[p.length()];
-        for (int i = 0; i < p.length(); i++) items[i] = "📞 " + p.optString(i);
+        for (int i = 0; i < p.length(); i++) items[i] = "☎ " + p.optString(i);
         new AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
-                .setTitle(name)
-                .setItems(items, (d, w) -> dial(p.optString(w), name))
+                .setTitle(name + " – który numer?")
+                .setItems(items, (d, w) -> contactActions(name, p.optString(w)))
                 .setNegativeButton("Anuluj", null)
                 .show();
     }
@@ -628,6 +632,117 @@ public class MainActivity extends Activity {
         } else {
             toast("Brak połączenia z telefonem");
         }
+    }
+
+    /** Kontakt: zadzwoń albo napisz SMS. */
+    private void contactActions(final String name, final String num) {
+        String title = (name == null || name.isEmpty()) ? num : name + "\n" + num;
+        new AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                .setTitle(title)
+                .setItems(new String[]{"📞 Zadzwoń", "✉ Napisz SMS (możesz podyktować)"}, (d, w) -> {
+                    if (w == 0) dial(num, name);
+                    else openSms(name, num);
+                })
+                .setNegativeButton("Anuluj", null)
+                .show();
+    }
+
+    /** Nowy SMS: dyktowanie głosem, gotowe teksty albo wpisanie. */
+    private void openSms(final String name, final String num) {
+        ScrollView sv = new ScrollView(this);
+        LinearLayout col = new LinearLayout(this);
+        col.setOrientation(LinearLayout.VERTICAL);
+        int p = Ui.dp(this, 12);
+        col.setPadding(p, p, p, p);
+        sv.addView(col);
+
+        final EditText et = new EditText(this);
+        et.setHint("Treść SMS-a – kliknij 🎤 i mów");
+        et.setHintTextColor(0xFF78909C);
+        et.setTextColor(Ui.WHITE);
+        et.setTextSize(21);
+        et.setMinLines(2);
+        et.setBackground(Ui.round(this, Ui.CARD, 12));
+        et.setPadding(p, Ui.dp(this, 10), p, Ui.dp(this, 10));
+        col.addView(et, Ui.lp(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, 0, this, 4));
+
+        final AlertDialog dlg = new AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                .setTitle("✉ SMS do: " + ((name == null || name.isEmpty()) ? num : name))
+                .setView(sv)
+                .setNegativeButton("Anuluj", null)
+                .create();
+
+        LinearLayout act = new LinearLayout(this);
+        act.setOrientation(LinearLayout.HORIZONTAL);
+        act.addView(Ui.button(this, "🎤 Dyktuj", Ui.PURPLE, 22, v -> dictate(et)),
+                Ui.lp(0, Ui.dp(this, 64), 1, this, 4));
+        act.addView(Ui.button(this, "⌫ Wyczyść", Ui.ORANGE, 20, v -> et.setText("")),
+                Ui.lp(0, Ui.dp(this, 64), 1, this, 4));
+        act.addView(Ui.button(this, "📨 Wyślij", Ui.GREEN, 22, v -> {
+            String t = et.getText().toString().trim();
+            if (t.isEmpty()) {
+                toast("Najpierw podyktuj albo wpisz treść");
+                return;
+            }
+            if (RadioService.sendToPhone(J.obj("t", "sms", "num", num, "text", t))) {
+                toast("Wysyłam SMS…");
+                dlg.dismiss();
+            } else {
+                toast("Brak połączenia z telefonem");
+            }
+        }), Ui.lp(0, Ui.dp(this, 64), 1, this, 4));
+        col.addView(act);
+
+        col.addView(Ui.text(this, "Gotowe teksty (kliknij, żeby wstawić):", 16, Ui.GREY, false),
+                Ui.lp(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, 0, this, 4));
+        LinearLayout grid = null;
+        for (int i = 0; i < QUICK_REPLIES.length; i++) {
+            if (i % 2 == 0) {
+                grid = new LinearLayout(this);
+                grid.setOrientation(LinearLayout.HORIZONTAL);
+                col.addView(grid);
+            }
+            final String q = QUICK_REPLIES[i];
+            grid.addView(Ui.button(this, q, 0xFF2E3B4E, 17, v -> et.setText(q)),
+                    Ui.lp(0, ViewGroup.LayoutParams.MATCH_PARENT, 1, this, 4));
+        }
+        if (QUICK_REPLIES.length % 2 == 1 && grid != null) {
+            grid.addView(new View(this), Ui.lp(0, 1, 1, this, 4));
+        }
+        dlg.setOnDismissListener(d -> {
+            if (dictateTarget == et) dictateTarget = null;
+        });
+        dlg.show();
+        dictate(et);
+    }
+
+    /** Rozpoznawanie mowy w radiu (jeśli radio ma usługę rozpoznawania mowy, np. aplikację Google). */
+    private void dictate(EditText target) {
+        dictateTarget = target;
+        Intent i = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+        i.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
+        i.putExtra(RecognizerIntent.EXTRA_LANGUAGE, "pl-PL");
+        i.putExtra(RecognizerIntent.EXTRA_PROMPT, "Powiedz treść SMS-a");
+        try {
+            startActivityForResult(i, REQ_SPEECH);
+        } catch (ActivityNotFoundException e) {
+            toast("To radio nie ma rozpoznawania mowy – użyj mikrofonu na klawiaturze albo wpisz tekst");
+        } catch (Exception e) {
+            toast("Nie udało się włączyć dyktowania");
+        }
+    }
+
+    @Override
+    protected void onActivityResult(int req, int res, Intent data) {
+        super.onActivityResult(req, res, data);
+        if (req != REQ_SPEECH || res != RESULT_OK || data == null || dictateTarget == null) return;
+        ArrayList<String> r = data.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS);
+        if (r == null || r.isEmpty()) return;
+        String said = r.get(0);
+        if (said.length() > 0) said = said.substring(0, 1).toUpperCase(new Locale("pl", "PL")) + said.substring(1);
+        String cur = dictateTarget.getText().toString().trim();
+        dictateTarget.setText(cur.isEmpty() ? said : cur + " " + said);
+        dictateTarget.setSelection(dictateTarget.getText().length());
     }
 
     // ------------------------------------------------------------------ klawiatura
