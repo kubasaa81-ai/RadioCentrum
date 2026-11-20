@@ -285,11 +285,17 @@ public class MainActivity extends Activity {
 
             @Override
             View row(JSONObject o) {
+                LinearLayout line = new LinearLayout(MainActivity.this);
+                line.setOrientation(LinearLayout.HORIZONTAL);
+                line.setGravity(Gravity.CENTER_VERTICAL);
+                line.setPadding(Ui.dp(MainActivity.this, 10), 0, 0, 0);
+                String app = o.optString("app");
+                int sz = Ui.dp(MainActivity.this, 54);
+                line.addView(Ui.badge(MainActivity.this, app, 54), new LinearLayout.LayoutParams(sz, sz));
                 LinearLayout r = rowBox();
                 LinearLayout head = new LinearLayout(MainActivity.this);
                 head.setOrientation(LinearLayout.HORIZONTAL);
-                String app = o.optString("app");
-                head.addView(Ui.text(MainActivity.this, app, 16, Ui.appColor(app), true),
+                head.addView(Ui.text(MainActivity.this, Ui.appKind(app), 16, Ui.appColor(app), true),
                         new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
                 head.addView(Ui.text(MainActivity.this, Ui.time(o.optLong("time")), 16, Ui.GREY, false));
                 r.addView(head);
@@ -297,7 +303,8 @@ public class MainActivity extends Activity {
                 if (!title.isEmpty()) r.addView(Ui.text(MainActivity.this, title, 21, Ui.WHITE, true));
                 String text = o.optString("text");
                 if (!text.isEmpty()) r.addView(Ui.text(MainActivity.this, text, 19, 0xFFE0E0E0, false));
-                return r;
+                line.addView(r, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+                return line;
             }
         };
         lv.setAdapter(notifAdapter);
@@ -546,7 +553,7 @@ public class MainActivity extends Activity {
     private void notifActions(final JSONObject m) {
         final String title = m.optString("title");
         final String app = m.optString("app");
-        String sub = ("SMS".equals(app) ? "✉ SMS" : "🔔 " + app) + "  ·  " + Ui.time(m.optLong("time"));
+        String sub = Ui.appIcon(app) + "  " + Ui.appKind(app) + "  ·  " + Ui.time(m.optLong("time"));
         final Okno o = new Okno(this, title.isEmpty() ? app : title, sub);
         String text = m.optString("text");
         if (!text.isEmpty()) o.message(text, 22);

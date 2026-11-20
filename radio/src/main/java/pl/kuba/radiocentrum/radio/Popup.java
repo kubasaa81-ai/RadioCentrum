@@ -78,8 +78,15 @@ final class Popup {
         int accent = Ui.appColor(appName);
         LinearLayout card = card(accent);
 
-        TextView a = Ui.text(app, "🔔 " + appName, 16, accent, true);
-        card.addView(a);
+        LinearLayout head = new LinearLayout(app);
+        head.setOrientation(LinearLayout.HORIZONTAL);
+        head.setGravity(Gravity.CENTER_VERTICAL);
+        int bs = Ui.dp(app, 40);
+        head.addView(Ui.badge(app, appName, 40), new LinearLayout.LayoutParams(bs, bs));
+        TextView a = Ui.text(app, Ui.appKind(appName), 18, accent, true);
+        a.setPadding(Ui.dp(app, 10), 0, 0, 0);
+        head.addView(a);
+        card.addView(head);
         String title = m.optString("title");
         if (!title.isEmpty()) {
             TextView t = Ui.text(app, title, 22, Ui.WHITE, true);

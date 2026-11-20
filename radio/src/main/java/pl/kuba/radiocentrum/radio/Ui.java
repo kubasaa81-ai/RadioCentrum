@@ -123,6 +123,41 @@ final class Ui {
         }
     }
 
+    /** Ikona rodzaju wiadomości. */
+    static String appIcon(String app) {
+        if (app == null) return "🔔";
+        switch (app) {
+            case "SMS":
+                return "✉";
+            case "WhatsApp":
+            case "Messenger":
+                return "💬";
+            case "Test":
+                return "🧪";
+            default:
+                return "🔔";
+        }
+    }
+
+    /** Opis rodzaju: „SMS” albo „Powiadomienie · Gmail”. */
+    static String appKind(String app) {
+        if ("SMS".equals(app)) return "SMS";
+        if ("WhatsApp".equals(app) || "Messenger".equals(app)) return "Wiadomość · " + app;
+        return "Powiadomienie · " + (app == null ? "" : app);
+    }
+
+    /** Okrągła kolorowa plakietka z ikoną. */
+    static TextView badge(Context c, String app, int sizeDp) {
+        TextView t = text(c, appIcon(app), sizeDp * 0.45f, WHITE, true);
+        t.setGravity(Gravity.CENTER);
+        GradientDrawable g = new GradientDrawable();
+        g.setShape(GradientDrawable.OVAL);
+        g.setColor(appColor(app));
+        t.setBackground(g);
+        t.setIncludeFontPadding(false);
+        return t;
+    }
+
     static String time(long ms) {
         if (ms <= 0) return "";
         Calendar now = Calendar.getInstance();
