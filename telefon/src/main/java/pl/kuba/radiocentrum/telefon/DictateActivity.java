@@ -8,6 +8,8 @@ import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.speech.RecognitionListener;
 import android.speech.RecognizerIntent;
 import android.speech.SpeechRecognizer;
@@ -26,6 +28,8 @@ public class DictateActivity extends Activity {
     private SpeechRecognizer sr;
     private TextView live;
     private boolean done;
+    private boolean carMic;
+    private final Handler h = new Handler(Looper.getMainLooper());
 
     @Override
     @SuppressWarnings("deprecation")
@@ -128,6 +132,14 @@ public class DictateActivity extends Activity {
             public void onEvent(int type, Bundle params) {
             }
         });
+        // mikrofon w aucie: otwórz kanał rozmowy Bluetooth (jak przy telefonowaniu)
+        carMic = CarAudio.route(this);
+        live.setText(carMic ? "Mów do mikrofonu w aucie" : "Mów do telefonu (brak zestawu w aucie)");
+        h.postDelayed(this::startListening, carMic ? 1600 : 0);
+    }
+
+    private void startListening() {
+        if (done || sr == null) return;
         Intent i = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
         i.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
         i.putExtra(RecognizerIntent.EXTRA_LANGUAGE, "pl-PL");
@@ -143,6 +155,11 @@ public class DictateActivity extends Activity {
     private void finishWith(String text, String err) {
         if (done) return;
         done = true;
+        h.removeCallbacksAndMessages(null);
+        if (carMic) {
+            carMic = false;
+            CarAudio.release(this);
+        }
         PhoneService s = PhoneService.instance;
         if (s != null) s.deliverDictation(text, err);
         finish();
@@ -156,11 +173,7 @@ public class DictateActivity extends Activity {
             } catch (Exception ignored) {
             }
         }
-        if (!done) {
-            done = true;
-            PhoneService s = PhoneService.instance;
-            if (s != null) s.deliverDictation(null, "Przerwano dyktowanie");
-        }
+        if (!done) finishWith(null, "Przerwano dyktowanie");
         super.onDestroy();
     }
 
