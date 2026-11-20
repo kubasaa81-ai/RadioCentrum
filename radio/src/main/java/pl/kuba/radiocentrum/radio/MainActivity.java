@@ -70,6 +70,14 @@ public class MainActivity extends Activity {
     private static final int REQ_SPEECH = 42;
 
     private final Runnable onChange = this::refresh;
+    private final android.os.Handler tickH = new android.os.Handler(android.os.Looper.getMainLooper());
+    private final Runnable tick = new Runnable() {
+        @Override
+        public void run() {
+            refreshStatus();
+            tickH.postDelayed(this, 1500);
+        }
+    };
 
     // ------------------------------------------------------------------ start
 
@@ -131,12 +139,14 @@ public class MainActivity extends Activity {
         RadioService.start(this);
         Store.addListener(onChange);
         refresh();
+        tickH.post(tick);
     }
 
     @Override
     protected void onPause() {
         super.onPause();
         Store.removeListener(onChange);
+        tickH.removeCallbacks(tick);
     }
 
     private void show(int idx) {
@@ -173,6 +183,18 @@ public class MainActivity extends Activity {
     }
 
     private void refresh() {
+        refreshStatus();
+        if (notifAdapter != null) notifAdapter.notifyDataSetChanged();
+        if (callAdapter != null) callAdapter.notifyDataSetChanged();
+        if (contactAdapter != null) {
+            filterContacts();
+            contactAdapter.notifyDataSetChanged();
+            if (contactsCountShown != Store.contacts.size()) fillLetters();
+        }
+    }
+
+    /** Pasek stanu i opis w Ustawieniach – odświeżane co 1,5 s. */
+    private void refreshStatus() {
         if (Store.linkKind != null) {
             String n = Store.phoneName == null || Store.phoneName.isEmpty() ? "telefonem" : Store.phoneName;
             status.setText("🟢 Połączono z " + n + " (" + Store.linkKind + ")");
@@ -183,13 +205,6 @@ public class MainActivity extends Activity {
         }
         if (!Popup.canDraw(this)) {
             status.append("   ⚠ Zezwól na okienka (⚙ Ustawienia)");
-        }
-        if (notifAdapter != null) notifAdapter.notifyDataSetChanged();
-        if (callAdapter != null) callAdapter.notifyDataSetChanged();
-        if (contactAdapter != null) {
-            filterContacts();
-            contactAdapter.notifyDataSetChanged();
-            if (contactsCountShown != Store.contacts.size()) fillLetters();
         }
         if (settingsInfo != null) settingsInfo.setText(settingsText());
     }
@@ -885,8 +900,11 @@ public class MainActivity extends Activity {
         code.setPadding(p, Ui.dp(this, 10), p, Ui.dp(this, 10));
         r3.addView(code, Ui.lp(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1, this, 6));
         r3.addView(Ui.button(this, "💾 Zapisz kod", Ui.GREEN, 18, v -> {
-            Prefs.setCode(this, code.getText().toString().trim());
-            toast("Zapisano");
+            String c = code.getText().toString().replaceAll("[^0-9]", "");
+            code.setText(c);
+            Prefs.setCode(this, c);
+            RadioService.kick();
+            toast(c.length() == 6 ? "Zapisano kod " + c + " – łączę…" : "Kod musi mieć 6 cyfr");
             refresh();
         }), Ui.lp(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1, this, 6));
         col.addView(r3);
@@ -912,6 +930,7 @@ public class MainActivity extends Activity {
                 : "❌ Okienka nad innymi aplikacjami: WYŁĄCZONE – kliknij niebieski przycisk")
                 + "\n" + RadioService.btInfo
                 + "\n" + RadioService.wifiInfo
+                + "\nZapisany kod Wi-Fi: " + (Prefs.code(this).isEmpty() ? "brak" : Prefs.code(this))
                 + "\nKontakty w radiu: " + Store.contacts.size()
                 + "   Historia połączeń: " + Store.calls.size();
     }

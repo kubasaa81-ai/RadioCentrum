@@ -66,6 +66,19 @@ public class RadioService extends Service implements Link.Handler {
         return true;
     }
 
+    /** Po zapisaniu kodu: spróbuj połączyć od razu, nie czekaj. */
+    static void kick() {
+        final RadioService s = instance;
+        if (s == null) return;
+        wifiInfo = "Wi-Fi: łączę…";
+        new Thread(() -> {
+            String gw = s.gateway();
+            if (gw != null && !s.tryTcp(gw)) {
+                wifiInfo = "Wi-Fi: kod zapisany – czekam na telefon w tej samej sieci";
+            }
+        }, "rc-kick").start();
+    }
+
     static boolean connected() {
         RadioService s = instance;
         return s != null && s.isConnected();
@@ -190,7 +203,7 @@ public class RadioService extends Service implements Link.Handler {
                 } else if (gw == null) {
                     wifiInfo = "Wi-Fi: radio nie jest połączone z Wi-Fi";
                 } else if (!tryTcp(gw)) {
-                    wifiInfo = "Wi-Fi: czekam na telefon w tej samej sieci (router w aucie lub hotspot)";
+                    wifiInfo = "Wi-Fi: kod zapisany – czekam na telefon w tej samej sieci (router w aucie lub hotspot)";
                 }
             }
             sleep(8000);
