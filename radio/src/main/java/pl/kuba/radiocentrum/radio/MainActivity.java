@@ -49,9 +49,10 @@ public class MainActivity extends Activity {
             "Nie."};
     private static final int[] QUICK_COLORS = {Ui.BLUE, Ui.TEAL, Ui.PURPLE, Ui.ORANGE, Ui.GREEN, 0xFF2E7D32, 0xFFC62828};
 
-    private static final int T_HOME = 0, T_NOTIF = 1, T_CALLS = 2, T_CONTACTS = 3, T_KEYPAD = 4, T_SETTINGS = 5;
-    private static final String[] TAB_NAMES = {"🏠 Pulpit", "🔔 Powiadomienia", "📞 Połączenia", "📒 Kontakty", "⌨ Klawiatura", "⚙ Ustawienia"};
-    private static final int[] TAB_COLORS = {Ui.TEAL, Ui.ORANGE, Ui.GREEN, Ui.BLUE, Ui.PURPLE, Ui.SLATE};
+    private static final int T_HOME = 0, T_NOTIF = 1, T_CALLS = 2, T_CONTACTS = 3, T_KEYPAD = 4, T_SETTINGS = 5, T_APPS = 6;
+    /** Górny pasek: Pulpit, Połączenia, Kontakty, Radio, Więcej (rozwijane menu). */
+    private static final String[] TAB_NAMES = {"🏠 Pulpit", "📞 Połączenia", "📒 Kontakty", "📻 Radio", "☰ Więcej"};
+    private static final int[] TAB_COLORS = {Ui.TEAL, Ui.GREEN, Ui.BLUE, 0xFFE65100, Ui.SLATE};
 
     private final Button[] tabs = new Button[TAB_NAMES.length];
     private FrameLayout content;
@@ -112,7 +113,11 @@ public class MainActivity extends Activity {
         top.setOrientation(LinearLayout.HORIZONTAL);
         for (int i = 0; i < TAB_NAMES.length; i++) {
             final int idx = i;
-            Button t = Ui.button(this, TAB_NAMES[i], TAB_COLORS[i], 18, v -> show(idx));
+            Button t = Ui.button(this, TAB_NAMES[i], TAB_COLORS[i], 18, v -> topClick(idx));
+            if (i == 3) t.setOnLongClickListener(v -> {
+                pickRole("radio");
+                return true;
+            });
             t.setMaxLines(2);
             Ui.autoSize(t, 11, 18);
             tabs[i] = t;
@@ -182,9 +187,10 @@ public class MainActivity extends Activity {
 
     private void show(int idx) {
         tab = idx;
+        int sel = idx == T_HOME ? 0 : idx == T_CALLS ? 1 : idx == T_CONTACTS ? 2 : 4;
         for (int i = 0; i < TAB_NAMES.length; i++) {
             int c = TAB_COLORS[i];
-            Ui.setColor(this, tabs[i], i == idx ? c : ((c & 0x00FFFFFF) | 0x55000000));
+            Ui.setColor(this, tabs[i], i == sel ? c : ((c & 0x00FFFFFF) | 0x55000000));
         }
         content.removeAllViews();
         notifAdapter = callAdapter = contactAdapter = null;
@@ -209,6 +215,9 @@ public class MainActivity extends Activity {
                 break;
             case T_HOME:
                 v = buildHome();
+                break;
+            case T_APPS:
+                v = buildApps();
                 break;
             default:
                 v = buildNotifs();
@@ -816,6 +825,12 @@ public class MainActivity extends Activity {
         left.addView(homeLast);
         row.addView(left, Ui.lp(0, ViewGroup.LayoutParams.MATCH_PARENT, 1, this, 4));
 
+        row.addView(buildNavPanel(), Ui.lp(0, ViewGroup.LayoutParams.MATCH_PARENT, 1.7f, this, 4));
+        return row;
+    }
+
+    /** Wszystkie aplikacje (☰ Więcej → 📱 Aplikacje). */
+    private View buildApps() {
         final android.widget.GridView grid = new android.widget.GridView(this);
         grid.setNumColumns(android.widget.GridView.AUTO_FIT);
         grid.setColumnWidth(Ui.dp(this, 112));
@@ -882,7 +897,7 @@ public class MainActivity extends Activity {
             if (f.contains(k)) f.remove(k);
             else f.add(k);
             Prefs.setFavs(this, f);
-            toast(f.contains(k) ? "★ Przypięto na początek: " + a.label : "Odpięto: " + a.label);
+            toast(f.contains(k) ? "★ Przypięto na Pulpit: " + a.label : "Odpięto: " + a.label);
             apps.clear();
             apps.addAll(loadApps());
             ad.notifyDataSetChanged();
@@ -890,12 +905,196 @@ public class MainActivity extends Activity {
         });
         LinearLayout right = new LinearLayout(this);
         right.setOrientation(LinearLayout.VERTICAL);
-        TextView hint = Ui.text(this, "Przytrzymaj kafelek, aby przypiąć go na początek ★", 14, 0xFF78909C, false);
+        TextView hint = Ui.text(this, "Przytrzymaj kafelek, aby przypiąć go na Pulpit ★", 14, 0xFF78909C, false);
         hint.setPadding(Ui.dp(this, 6), 0, 0, Ui.dp(this, 4));
         right.addView(hint);
         right.addView(grid, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
-        row.addView(right, Ui.lp(0, ViewGroup.LayoutParams.MATCH_PARENT, 1.7f, this, 4));
-        return row;
+        return right;
+    }
+
+    // ------------------------------------------------------------------ nawigacja / radio / menu
+
+    private void topClick(int i) {
+        switch (i) {
+            case 0:
+                show(T_HOME);
+                break;
+            case 1:
+                show(T_CALLS);
+                break;
+            case 2:
+                show(T_CONTACTS);
+                break;
+            case 3:
+                launchRole("radio");
+                break;
+            default:
+                moreMenu();
+        }
+    }
+
+    private void moreMenu() {
+        Okno o = new Okno(this, "☰ Więcej", null);
+        int n = Store.notifs.size();
+        o.row(o.btn("🔔 Powiadomienia" + (n > 0 ? " (" + n + ")" : ""), Ui.ORANGE, true, () -> show(T_NOTIF)),
+                o.btn("⌨ Klawiatura", Ui.PURPLE, true, () -> show(T_KEYPAD)));
+        o.row(o.btn("📱 Aplikacje", Ui.BLUE, true, () -> show(T_APPS)),
+                o.btn("⚙ Ustawienia", Ui.SLATE, true, () -> show(T_SETTINGS)));
+        o.row(o.btn("🧭 Zmień nawigację", 0xFF2E7D32, true, () -> pickRole("nav")),
+                o.btn("📻 Zmień aplikację radia", 0xFFE65100, true, () -> pickRole("radio")));
+        o.cancel("✖ Zamknij");
+        o.show();
+    }
+
+    private static final String[] NAV_WORDS = {"maps", "mapy", "nav", "yanosik", "automapa", "waze", "igo",
+            "sygic", "here", "osmand", "mapa", "gps"};
+    private static final String[] RADIO_WORDS = {"radio", "fm", "tuner", "am/fm"};
+
+    private AppItem roleApp(String role) {
+        String f = getSharedPreferences("rc", MODE_PRIVATE).getString("role_" + role, null);
+        if (f == null) return null;
+        android.content.ComponentName cn = android.content.ComponentName.unflattenFromString(f);
+        if (cn == null) return null;
+        try {
+            android.content.pm.PackageManager pm = getPackageManager();
+            android.content.pm.ActivityInfo ai = pm.getActivityInfo(cn, 0);
+            AppItem a = new AppItem();
+            a.cn = cn;
+            a.label = String.valueOf(ai.loadLabel(pm));
+            a.icon = ai.loadIcon(pm);
+            return a;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private void launchRole(String role) {
+        AppItem a = roleApp(role);
+        if (a == null) {
+            pickRole(role);
+            return;
+        }
+        launch(a.cn);
+    }
+
+    private void launch(android.content.ComponentName cn) {
+        try {
+            Intent i = new Intent(Intent.ACTION_MAIN);
+            i.addCategory(Intent.CATEGORY_LAUNCHER);
+            i.setComponent(cn);
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED);
+            startActivity(i);
+        } catch (Exception e) {
+            toast("Nie udało się otworzyć");
+        }
+    }
+
+    /** Wybór aplikacji do roli (nawigacja / radio). Pasujące aplikacje są na górze listy. */
+    private void pickRole(final String role) {
+        final boolean nav = "nav".equals(role);
+        String[] words = nav ? NAV_WORDS : RADIO_WORDS;
+        List<AppItem> all = loadApps();
+        List<AppItem> match = new ArrayList<>(), rest = new ArrayList<>();
+        for (AppItem a : all) {
+            String t = (a.label + " " + a.cn.getPackageName()).toLowerCase(Locale.ROOT);
+            boolean m = false;
+            for (String w : words) if (t.contains(w)) m = true;
+            if (m) match.add(a);
+            else rest.add(a);
+        }
+        Okno o = new Okno(this, nav ? "🧭 Która aplikacja to nawigacja?" : "📻 Która aplikacja to radio FM?",
+                "Pasujące są na zielono, na górze listy");
+        List<AppItem> ordered = new ArrayList<>(match);
+        ordered.addAll(rest);
+        for (int i = 0; i < ordered.size(); i += 2) {
+            Button b1 = roleBtn(o, role, ordered.get(i), i < match.size());
+            Button b2 = i + 1 < ordered.size() ? roleBtn(o, role, ordered.get(i + 1), i + 1 < match.size()) : null;
+            o.row(b1, b2);
+        }
+        o.cancel("✖ Anuluj");
+        o.show();
+    }
+
+    private Button roleBtn(Okno o, final String role, final AppItem a, boolean match) {
+        Button b = o.btn(a.label, match ? 0xFF2E7D32 : 0xFF2E3B4E, true, () -> {
+            getSharedPreferences("rc", MODE_PRIVATE).edit().putString("role_" + role, a.cn.flattenToString()).apply();
+            toast("Zapisano: " + a.label);
+            if (tab == T_HOME) show(T_HOME);
+            if ("radio".equals(role)) launch(a.cn);
+        });
+        b.setTextSize(18);
+        return b;
+    }
+
+    /** Duży kafel nawigacji na Pulpicie + przypięte aplikacje pod nim. */
+    private View buildNavPanel() {
+        LinearLayout right = new LinearLayout(this);
+        right.setOrientation(LinearLayout.VERTICAL);
+        final AppItem nav = roleApp("nav");
+
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setGravity(Gravity.CENTER);
+        int p = Ui.dp(this, 16);
+        card.setPadding(p, p, p, p);
+        android.graphics.drawable.GradientDrawable g = Ui.round(this, 0xFF12352B, 22);
+        g.setStroke(Ui.dp(this, 3), 0xFF43A047);
+        card.setBackground(g);
+        if (nav != null && nav.icon != null) {
+            android.widget.ImageView iv = new android.widget.ImageView(this);
+            iv.setImageDrawable(nav.icon);
+            int is = Ui.dp(this, 96);
+            card.addView(iv, new LinearLayout.LayoutParams(is, is));
+        }
+        TextView t = Ui.text(this, nav != null ? "🧭 " + nav.label : "🧭 Nawigacja", 30, Ui.WHITE, true);
+        t.setGravity(Gravity.CENTER);
+        card.addView(t);
+        TextView sub = Ui.text(this, nav != null ? "Kliknij – uruchom nawigację   •   przytrzymaj – zmień"
+                : "Kliknij i wybierz swoją nawigację (np. Mapy Google, Yanosik)", 17, 0xFFA5D6A7, false);
+        sub.setGravity(Gravity.CENTER);
+        card.addView(sub);
+        card.setOnClickListener(v -> launchRole("nav"));
+        card.setOnLongClickListener(v -> {
+            pickRole("nav");
+            return true;
+        });
+        right.addView(card, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
+
+        // przypięte aplikacje
+        LinearLayout favRow = new LinearLayout(this);
+        favRow.setOrientation(LinearLayout.HORIZONTAL);
+        int shown = 0;
+        for (final AppItem a : loadApps()) {
+            if (!a.fav || shown >= 5) continue;
+            shown++;
+            LinearLayout tile = new LinearLayout(this);
+            tile.setOrientation(LinearLayout.VERTICAL);
+            tile.setGravity(Gravity.CENTER);
+            tile.setBackground(Ui.round(this, 0xFF24385A, 16));
+            int pp = Ui.dp(this, 4);
+            tile.setPadding(pp, pp, pp, pp);
+            android.widget.ImageView iv = new android.widget.ImageView(this);
+            iv.setImageDrawable(a.icon);
+            int is = Ui.dp(this, 44);
+            tile.addView(iv, new LinearLayout.LayoutParams(is, is));
+            TextView l = Ui.text(this, a.label, 14, Ui.WHITE, false);
+            l.setGravity(Gravity.CENTER);
+            l.setMaxLines(1);
+            l.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            tile.addView(l);
+            tile.setOnClickListener(v -> launch(a.cn));
+            favRow.addView(tile, Ui.lp(0, Ui.dp(this, 92), 1, this, 4));
+        }
+        if (shown == 0) {
+            TextView h = Ui.text(this, "Tu pojawią się przypięte aplikacje: ☰ Więcej → 📱 Aplikacje → przytrzymaj kafelek ★",
+                    15, 0xFF78909C, false);
+            h.setGravity(Gravity.CENTER);
+            h.setPadding(0, Ui.dp(this, 8), 0, 0);
+            favRow.addView(h, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT));
+        }
+        right.addView(favRow);
+        return right;
     }
 
     private List<AppItem> loadApps() {

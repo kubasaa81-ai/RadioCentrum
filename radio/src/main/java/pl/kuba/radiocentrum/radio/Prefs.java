@@ -14,7 +14,7 @@ final class Prefs {
     }
 
     static boolean autoRead(Context c) {
-        return c.getSharedPreferences("rc", Context.MODE_PRIVATE).getBoolean("autoRead", false);
+        return c.getSharedPreferences("rc", Context.MODE_PRIVATE).getBoolean("autoRead", true);
     }
 
     static void setAutoRead(Context c, boolean v) {
