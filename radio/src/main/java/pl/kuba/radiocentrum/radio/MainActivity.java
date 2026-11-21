@@ -1130,6 +1130,7 @@ public class MainActivity extends Activity {
                         () -> openComp("com.xyauto.Settings", "com.xyauto.Settings.MainActivity")),
                 o.btn("🎚 Efekt dźwiękowy / korektor", Ui.PURPLE, true,
                         () -> openComp("com.xy.tda7729", "com.xy.tda7729.MainActivity")));
+        o.row(o.btn("🎤 Test mikrofonów (który słyszy?)", 0xFFAD1457, true, () -> MicTest.show(this)));
         o.row(o.btn("🎙 Test mikrofonu (nagraj i odsłuchaj)", Ui.GREEN, true,
                         () -> openComp("com.android.soundrecorder", "com.android.soundrecorder.SoundRecorder")),
                 o.btn("📶 Ustawienia Bluetooth radia", Ui.BLUE, true,
