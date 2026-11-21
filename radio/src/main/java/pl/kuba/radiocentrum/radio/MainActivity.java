@@ -54,7 +54,8 @@ public class MainActivity extends Activity {
     private static final String[] TAB_NAMES = {"🏠 Pulpit", "📞 Połączenia", "📒 Kontakty", "📻 Radio", "☰ Więcej"};
     private static final int[] TAB_COLORS = {Ui.TEAL, Ui.GREEN, Ui.BLUE, 0xFFE65100, Ui.SLATE};
 
-    private final Button[] tabs = new Button[TAB_NAMES.length];
+    private LinearLayout top;
+    private TextView screenTitle;
     private FrameLayout content;
     private TextView status;
     private int tab = T_NOTIF;
@@ -114,21 +115,18 @@ public class MainActivity extends Activity {
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(Ui.BG);
 
-        LinearLayout top = new LinearLayout(this);
+        // na Pulpicie paska nie ma; na innych ekranach: „🏠 Pulpit” + nazwa ekranu
+        top = new LinearLayout(this);
         top.setOrientation(LinearLayout.HORIZONTAL);
-        for (int i = 0; i < TAB_NAMES.length; i++) {
-            final int idx = i;
-            Button t = Ui.button(this, TAB_NAMES[i], TAB_COLORS[i], 18, v -> topClick(idx));
-            if (i == 3) t.setOnLongClickListener(v -> {
-                pickRole("radio");
-                return true;
-            });
-            t.setMaxLines(2);
-            Ui.autoSize(t, 11, 18);
-            tabs[i] = t;
-            top.addView(t, Ui.lp(0, ViewGroup.LayoutParams.MATCH_PARENT, 1, this, 4));
-        }
-        root.addView(top, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(this, 66)));
+        top.setGravity(Gravity.CENTER_VERTICAL);
+        Button homeBtn = Ui.button(this, "🏠 Pulpit", Ui.TEAL, 20, v -> show(T_HOME));
+        top.addView(homeBtn, Ui.lp(Ui.dp(this, 190), ViewGroup.LayoutParams.MATCH_PARENT, 0, this, 4));
+        screenTitle = Ui.text(this, "", 24, Ui.WHITE, true);
+        screenTitle.setPadding(Ui.dp(this, 12), 0, 0, 0);
+        top.addView(screenTitle, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        Button moreBtn = Ui.button(this, "☰ Więcej", Ui.SLATE, 18, v -> moreMenu());
+        top.addView(moreBtn, Ui.lp(Ui.dp(this, 160), ViewGroup.LayoutParams.MATCH_PARENT, 0, this, 4));
+        root.addView(top, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(this, 60)));
 
         status = Ui.text(this, "", 16, Ui.WHITE, true);
         status.setPadding(Ui.dp(this, 12), Ui.dp(this, 2), Ui.dp(this, 12), Ui.dp(this, 4));
@@ -211,11 +209,9 @@ public class MainActivity extends Activity {
 
     private void show(int idx) {
         tab = idx;
-        int sel = idx == T_HOME ? 0 : idx == T_CALLS ? 1 : idx == T_CONTACTS ? 2 : 4;
-        for (int i = 0; i < TAB_NAMES.length; i++) {
-            int c = TAB_COLORS[i];
-            Ui.setColor(this, tabs[i], i == sel ? c : ((c & 0x00FFFFFF) | 0x55000000));
-        }
+        top.setVisibility(idx == T_HOME ? View.GONE : View.VISIBLE);
+        String[] titles = {"", "🔔 Powiadomienia", "📞 Połączenia", "📒 Kontakty", "⌨ Klawiatura", "⚙ Ustawienia", "📱 Aplikacje"};
+        if (idx >= 0 && idx < titles.length) screenTitle.setText(titles[idx]);
         content.removeAllViews();
         notifAdapter = callAdapter = contactAdapter = null;
         contactList = null;
@@ -814,6 +810,84 @@ public class MainActivity extends Activity {
         android.content.ComponentName cn;
         android.graphics.drawable.Drawable icon;
         boolean fav;
+        String key;    // "rc:..." = funkcja Radio Centrum, inaczej aplikacja
+        String emoji;
+        int color;
+
+        String id() {
+            return key != null ? key : cn.flattenToString();
+        }
+    }
+
+    /** Funkcje Radio Centrum, które można dodać na Pulpit jak aplikacje. */
+    private static final String[][] RC_TILES = {
+            {"rc:calls", "📞", "Połączenia"}, {"rc:contacts", "📒", "Kontakty"}, {"rc:notif", "🔔", "Powiadomienia"},
+            {"rc:keypad", "⌨", "Klawiatura"}, {"rc:radio", "📻", "Radio"}, {"rc:aa", "🚗", "Android Auto"},
+            {"rc:tools", "🛠", "Narzędzia radia"}, {"rc:settings", "⚙", "Ustawienia"}, {"rc:apps", "📱", "Wszystkie aplikacje"},
+            {"rc:more", "☰", "Więcej"}};
+    private static final int[] RC_COLORS = {Ui.GREEN, Ui.BLUE, Ui.ORANGE, Ui.PURPLE, 0xFFE65100, 0xFF1565C0,
+            0xFF00695C, Ui.SLATE, 0xFF3949AB, 0xFF455A64};
+
+    private List<AppItem> rcTiles(java.util.Set<String> favs) {
+        List<AppItem> out = new ArrayList<>();
+        for (int i = 0; i < RC_TILES.length; i++) {
+            AppItem a = new AppItem();
+            a.key = RC_TILES[i][0];
+            a.emoji = RC_TILES[i][1];
+            a.label = RC_TILES[i][2];
+            a.color = RC_COLORS[i];
+            a.fav = favs.contains(a.key);
+            out.add(a);
+        }
+        return out;
+    }
+
+    private void openTile(AppItem a) {
+        if (a.key == null) {
+            launch(a.cn);
+            return;
+        }
+        switch (a.key) {
+            case "rc:calls":
+                show(T_CALLS);
+                break;
+            case "rc:contacts":
+                show(T_CONTACTS);
+                break;
+            case "rc:notif":
+                show(T_NOTIF);
+                break;
+            case "rc:keypad":
+                show(T_KEYPAD);
+                break;
+            case "rc:radio":
+                launchRole("radio");
+                break;
+            case "rc:aa":
+                openAA();
+                break;
+            case "rc:tools":
+                tools();
+                break;
+            case "rc:settings":
+                show(T_SETTINGS);
+                break;
+            case "rc:apps":
+                show(T_APPS);
+                break;
+            default:
+                moreMenu();
+        }
+    }
+
+    /** Pierwsze uruchomienie: domyślne kafelki na Pulpicie. */
+    private void ensureDefaultTiles() {
+        android.content.SharedPreferences sp = getSharedPreferences("rc", MODE_PRIVATE);
+        if (sp.getBoolean("tilesInit", false)) return;
+        java.util.Set<String> f = Prefs.favs(this);
+        java.util.Collections.addAll(f, "rc:calls", "rc:contacts", "rc:notif", "rc:radio", "rc:settings");
+        Prefs.setFavs(this, f);
+        sp.edit().putBoolean("tilesInit", true).apply();
     }
 
     private View buildHome() {
@@ -1361,7 +1435,10 @@ public class MainActivity extends Activity {
     private View buildHomeApps() {
         LinearLayout col = new LinearLayout(this);
         col.setOrientation(LinearLayout.VERTICAL);
+        ensureDefaultTiles();
         final List<AppItem> chosen = new ArrayList<>();
+        java.util.Set<String> favsNow = Prefs.favs(this);
+        for (AppItem a : rcTiles(favsNow)) if (a.fav) chosen.add(a);
         for (AppItem a : loadApps()) if (a.fav) chosen.add(a);
 
         if (chosen.isEmpty()) {
@@ -1401,11 +1478,18 @@ public class MainActivity extends Activity {
                     t.setGravity(Gravity.CENTER);
                     int pp = Ui.dp(MainActivity.this, 6);
                     t.setPadding(pp, pp, pp, pp);
-                    t.setBackground(Ui.round(MainActivity.this, 0xFF24385A, 18));
-                    android.widget.ImageView iv = new android.widget.ImageView(MainActivity.this);
-                    iv.setImageDrawable(a.icon);
                     int is = Ui.dp(MainActivity.this, 56);
-                    t.addView(iv, new LinearLayout.LayoutParams(is, is));
+                    if (a.key != null) {
+                        t.setBackground(Ui.round(MainActivity.this, a.color, 18));
+                        TextView em = Ui.text(MainActivity.this, a.emoji, 34, Ui.WHITE, false);
+                        em.setGravity(Gravity.CENTER);
+                        t.addView(em, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, is));
+                    } else {
+                        t.setBackground(Ui.round(MainActivity.this, 0xFF24385A, 18));
+                        android.widget.ImageView iv = new android.widget.ImageView(MainActivity.this);
+                        iv.setImageDrawable(a.icon);
+                        t.addView(iv, new LinearLayout.LayoutParams(is, is));
+                    }
                     TextView l = Ui.text(MainActivity.this, a.label, 15, Ui.WHITE, false);
                     l.setGravity(Gravity.CENTER);
                     l.setMaxLines(2);
@@ -1416,11 +1500,11 @@ public class MainActivity extends Activity {
                     return t;
                 }
             });
-            grid.setOnItemClickListener((pa, v, pos, id) -> launch(chosen.get(pos).cn));
+            grid.setOnItemClickListener((pa, v, pos, id) -> openTile(chosen.get(pos)));
             grid.setOnItemLongClickListener((pa, v, pos, id) -> {
                 AppItem a = chosen.get(pos);
                 java.util.Set<String> f = Prefs.favs(this);
-                f.remove(a.cn.flattenToString());
+                f.remove(a.id());
                 Prefs.setFavs(this, f);
                 toast("Usunięto z Pulpitu: " + a.label);
                 show(T_HOME);
@@ -1428,8 +1512,13 @@ public class MainActivity extends Activity {
             });
             col.addView(grid, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
         }
-        col.addView(Ui.button(this, "➕ Dodaj / usuń aplikacje", Ui.TEAL, 18, v -> chooseHomeApps()),
-                Ui.lp(ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(this, 56), 0, this, 4));
+        LinearLayout bottom = new LinearLayout(this);
+        bottom.setOrientation(LinearLayout.HORIZONTAL);
+        bottom.addView(Ui.buttonFit(this, "➕ Dodaj / usuń", Ui.TEAL, 18, v -> chooseHomeApps()),
+                Ui.lp(0, Ui.dp(this, 56), 1, this, 4));
+        bottom.addView(Ui.buttonFit(this, "☰ Więcej", Ui.SLATE, 18, v -> moreMenu()),
+                Ui.lp(Ui.dp(this, 150), Ui.dp(this, 56), 0, this, 4));
+        col.addView(bottom);
         return col;
     }
 
@@ -1437,7 +1526,8 @@ public class MainActivity extends Activity {
     private void chooseHomeApps() {
         final Okno o = new Okno(this, "Aplikacje na Pulpicie", "Kliknij, aby zaznaczyć ✓ lub odznaczyć");
         final java.util.Set<String> f = Prefs.favs(this);
-        List<AppItem> all = loadApps();
+        List<AppItem> all = rcTiles(f);
+        all.addAll(loadApps());
         for (int i = 0; i < all.size(); i += 2) {
             Button b1 = favToggle(o, all.get(i), f);
             Button b2 = i + 1 < all.size() ? favToggle(o, all.get(i + 1), f) : null;
@@ -1452,13 +1542,14 @@ public class MainActivity extends Activity {
     }
 
     private Button favToggle(Okno o, final AppItem a, final java.util.Set<String> f) {
-        final String k = a.cn.flattenToString();
+        final String k = a.id();
+        final String label = a.key != null ? a.emoji + " " + a.label : a.label;
         final Button[] ref = new Button[1];
-        ref[0] = o.btn((f.contains(k) ? "✓ " : "") + a.label, f.contains(k) ? 0xFF2E7D32 : 0xFF2E3B4E, false, () -> {
+        ref[0] = o.btn((f.contains(k) ? "✓ " : "") + label, f.contains(k) ? 0xFF2E7D32 : 0xFF2E3B4E, false, () -> {
             if (f.contains(k)) f.remove(k);
             else f.add(k);
             boolean on = f.contains(k);
-            ref[0].setText((on ? "✓ " : "") + a.label);
+            ref[0].setText((on ? "✓ " : "") + label);
             Ui.setColor(this, ref[0], on ? 0xFF2E7D32 : 0xFF2E3B4E);
         });
         ref[0].setTextSize(17);
