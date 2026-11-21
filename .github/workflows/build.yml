@@ -29,8 +29,8 @@ jobs:
       - name: Przygotuj pliki APK
         run: |
           mkdir out
-          cp radio/build/outputs/apk/debug/radio-debug.apk out/RadioCentrum-RADIO.apk
-          cp telefon/build/outputs/apk/debug/telefon-debug.apk out/RadioCentrum-TELEFON.apk
+          cp radio/build/outputs/apk/debug/radio-debug.apk out/RADIO-RadioCentrum.apk
+          cp telefon/build/outputs/apk/debug/telefon-debug.apk out/TELEFON-RadioCentrum.apk
 
       - uses: actions/upload-artifact@v4
         with:
