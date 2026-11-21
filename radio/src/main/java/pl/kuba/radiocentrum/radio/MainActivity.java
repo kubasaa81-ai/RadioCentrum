@@ -69,6 +69,8 @@ public class MainActivity extends Activity {
     private TextView dialDisplay, dialName;
     private TextView settingsInfo;
     private CarView carView;
+    private android.webkit.WebView mapView;
+    private android.location.LocationListener locListener;
     private TextView carText, homeStatus, homeLast;
     private final Runnable lightPoll = new Runnable() {
         @Override
@@ -135,6 +137,18 @@ public class MainActivity extends Activity {
         setContentView(root);
         show(Popup.canDraw(this) ? T_HOME : T_SETTINGS);
         handleIntent(getIntent());
+        if (android.os.Build.VERSION.SDK_INT >= 23
+                && checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION)
+                != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{android.Manifest.permission.ACCESS_FINE_LOCATION,
+                    android.Manifest.permission.ACCESS_COARSE_LOCATION}, 7);
+        }
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int code, String[] perms, int[] res) {
+        super.onRequestPermissionsResult(code, perms, res);
+        if (mapView != null) startLocation();
     }
 
     @Override
@@ -168,6 +182,7 @@ public class MainActivity extends Activity {
         refresh();
         tickH.post(tick);
         tickH.post(lightPoll);
+        if (mapView != null) startLocation();
     }
 
     @Override
@@ -183,6 +198,7 @@ public class MainActivity extends Activity {
         Store.removeListener(onChange);
         tickH.removeCallbacks(tick);
         tickH.removeCallbacks(lightPoll);
+        stopLocation();
     }
 
     private void show(int idx) {
@@ -199,6 +215,14 @@ public class MainActivity extends Activity {
         dialDisplay = dialName = settingsInfo = null;
         carView = null;
         carText = homeStatus = homeLast = null;
+        stopLocation();
+        if (mapView != null) {
+            try {
+                mapView.destroy();
+            } catch (Exception ignored) {
+            }
+            mapView = null;
+        }
         View v;
         switch (idx) {
             case T_CALLS:
@@ -1032,33 +1056,40 @@ public class MainActivity extends Activity {
         right.setOrientation(LinearLayout.VERTICAL);
         final AppItem nav = roleApp("nav");
 
-        LinearLayout card = new LinearLayout(this);
-        card.setOrientation(LinearLayout.VERTICAL);
-        card.setGravity(Gravity.CENTER);
-        int p = Ui.dp(this, 16);
-        card.setPadding(p, p, p, p);
+        // żywa mapa z pozycją auta (GPS radia) + przycisk „Nawiguj”
+        FrameLayout mapBox = new FrameLayout(this);
         android.graphics.drawable.GradientDrawable g = Ui.round(this, 0xFF12352B, 22);
         g.setStroke(Ui.dp(this, 3), 0xFF43A047);
-        card.setBackground(g);
-        if (nav != null && nav.icon != null) {
-            android.widget.ImageView iv = new android.widget.ImageView(this);
-            iv.setImageDrawable(nav.icon);
-            int is = Ui.dp(this, 96);
-            card.addView(iv, new LinearLayout.LayoutParams(is, is));
-        }
-        TextView t = Ui.text(this, nav != null ? "🧭 " + nav.label : "🧭 Nawigacja", 30, Ui.WHITE, true);
-        t.setGravity(Gravity.CENTER);
-        card.addView(t);
-        TextView sub = Ui.text(this, nav != null ? "Kliknij – uruchom nawigację   •   przytrzymaj – zmień"
-                : "Kliknij i wybierz swoją nawigację (np. Mapy Google, Yanosik)", 17, 0xFFA5D6A7, false);
-        sub.setGravity(Gravity.CENTER);
-        card.addView(sub);
-        card.setOnClickListener(v -> launchRole("nav"));
-        card.setOnLongClickListener(v -> {
+        mapBox.setBackground(g);
+        int bp = Ui.dp(this, 3);
+        mapBox.setPadding(bp, bp, bp, bp);
+        mapView = new android.webkit.WebView(this);
+        android.webkit.WebSettings ws = mapView.getSettings();
+        ws.setJavaScriptEnabled(true);
+        ws.setDomStorageEnabled(true);
+        mapView.setBackgroundColor(0xFF1B2430);
+        mapView.setWebViewClient(new android.webkit.WebViewClient());
+        mapView.loadDataWithBaseURL("https://radiocentrum.local/", MAP_HTML, "text/html", "utf-8", null);
+        mapBox.addView(mapView, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT));
+
+        LinearLayout bar = new LinearLayout(this);
+        bar.setOrientation(LinearLayout.HORIZONTAL);
+        Button go = Ui.buttonFit(this, nav != null ? "➤ Nawiguj – " + nav.label : "➤ Wybierz nawigację", 0xFF2E7D32, 20,
+                v -> launchRole("nav"));
+        go.setOnLongClickListener(v -> {
             pickRole("nav");
             return true;
         });
-        right.addView(card, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
+        bar.addView(go, Ui.lp(0, Ui.dp(this, 58), 1, this, 6));
+        Button me = Ui.buttonFit(this, "◎ Moja pozycja", Ui.BLUE, 18, v -> {
+            if (mapView != null) mapView.evaluateJavascript("center()", null);
+        });
+        bar.addView(me, Ui.lp(Ui.dp(this, 170), Ui.dp(this, 58), 0, this, 6));
+        mapBox.addView(bar, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM));
+        right.addView(mapBox, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
+        startLocation();
 
         // przypięte aplikacje
         LinearLayout favRow = new LinearLayout(this);
@@ -1095,6 +1126,76 @@ public class MainActivity extends Activity {
         }
         right.addView(favRow);
         return right;
+    }
+
+    private static final String MAP_HTML = "<!DOCTYPE html><html><head>"
+            + "<meta name='viewport' content='width=device-width,initial-scale=1'>"
+            + "<link rel='stylesheet' href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'>"
+            + "<script src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'></script>"
+            + "<style>html,body,#m{margin:0;height:100%;background:#1b2430}"
+            + ".leaflet-control-attribution{font-size:9px}</style></head><body><div id='m'></div><script>"
+            + "var map=L.map('m',{zoomControl:false}).setView([51.76,19.46],13);"
+            + "L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',"
+            + "{maxZoom:19,attribution:'© OpenStreetMap © CARTO'}).addTo(map);"
+            + "var me=L.circleMarker([0,0],{radius:11,color:'#fff',weight:3,fillColor:'#1E88E5',fillOpacity:1});"
+            + "var follow=true;map.on('dragstart',function(){follow=false;});"
+            + "function pos(a,b){me.setLatLng([a,b]);if(!map.hasLayer(me))me.addTo(map);"
+            + "if(follow)map.setView([a,b],map.getZoom()<14?16:map.getZoom());}"
+            + "function center(){follow=true;var p=me.getLatLng();if(p.lat)map.setView(p,16);}"
+            + "</script></body></html>";
+
+    @android.annotation.SuppressLint("MissingPermission")
+    private void startLocation() {
+        if (mapView == null || locListener != null) return;
+        if (android.os.Build.VERSION.SDK_INT >= 23
+                && checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION)
+                != android.content.pm.PackageManager.PERMISSION_GRANTED) return;
+        final android.location.LocationManager lm =
+                (android.location.LocationManager) getSystemService(LOCATION_SERVICE);
+        if (lm == null) return;
+        locListener = new android.location.LocationListener() {
+            @Override
+            public void onLocationChanged(android.location.Location l) {
+                if (mapView != null) {
+                    mapView.evaluateJavascript("pos(" + l.getLatitude() + "," + l.getLongitude() + ")", null);
+                }
+            }
+
+            @Override
+            public void onStatusChanged(String p, int s, Bundle b) {
+            }
+
+            @Override
+            public void onProviderEnabled(String p) {
+            }
+
+            @Override
+            public void onProviderDisabled(String p) {
+            }
+        };
+        for (String prov : new String[]{android.location.LocationManager.GPS_PROVIDER,
+                android.location.LocationManager.NETWORK_PROVIDER}) {
+            try {
+                if (!lm.isProviderEnabled(prov)) continue;
+                lm.requestLocationUpdates(prov, 2000, 3, locListener);
+                final android.location.Location last = lm.getLastKnownLocation(prov);
+                if (last != null) tickH.postDelayed(() -> {
+                    if (locListener != null) locListener.onLocationChanged(last);
+                }, 1500);
+            } catch (Exception ignored) {
+            }
+        }
+    }
+
+    private void stopLocation() {
+        if (locListener == null) return;
+        try {
+            android.location.LocationManager lm =
+                    (android.location.LocationManager) getSystemService(LOCATION_SERVICE);
+            if (lm != null) lm.removeUpdates(locListener);
+        } catch (Exception ignored) {
+        }
+        locListener = null;
     }
 
     private List<AppItem> loadApps() {
