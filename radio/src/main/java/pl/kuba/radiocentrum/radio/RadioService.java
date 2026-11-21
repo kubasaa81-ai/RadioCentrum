@@ -99,6 +99,16 @@ public class RadioService extends Service implements Link.Handler {
         Store.load(this);
         Mowa.init(this);
         Fotoradary.start(this);
+        // start radia: Android Auto (ZLink), potem Pulpit
+        AutoStart.run(this);
+        // wybudzenie radia (zapłon) – ekran się włącza
+        android.content.IntentFilter sf = new android.content.IntentFilter(Intent.ACTION_SCREEN_ON);
+        registerReceiver(new android.content.BroadcastReceiver() {
+            @Override
+            public void onReceive(Context c, Intent i) {
+                AutoStart.run(c);
+            }
+        }, sf);
         main.postDelayed(new Runnable() {
             @Override
             public void run() {

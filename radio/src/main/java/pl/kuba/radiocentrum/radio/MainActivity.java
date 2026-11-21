@@ -966,6 +966,8 @@ public class MainActivity extends Activity {
                 o.btn("⌨ Klawiatura", Ui.PURPLE, true, () -> show(T_KEYPAD)));
         o.row(o.btn("📱 Aplikacje", Ui.BLUE, true, () -> show(T_APPS)),
                 o.btn("⚙ Ustawienia", Ui.SLATE, true, () -> show(T_SETTINGS)));
+        o.row(o.btn("🚗 Android Auto", 0xFF1565C0, true, this::openAA),
+                o.btn("🚗 Zmień aplikację Android Auto", 0xFF37474F, true, () -> pickRole("aa")));
         o.row(o.btn("🧭 Zmień nawigację", 0xFF2E7D32, true, () -> pickRole("nav")),
                 o.btn("📻 Zmień aplikację radia", 0xFFE65100, true, () -> pickRole("radio")));
         o.cancel("✖ Zamknij");
@@ -994,6 +996,10 @@ public class MainActivity extends Activity {
         }
     }
 
+    private void openAA() {
+        if (!AutoStart.launchAA(this)) pickRole("aa");
+    }
+
     private void launchRole(String role) {
         AppItem a = roleApp(role);
         if (a == null) {
@@ -1018,7 +1024,8 @@ public class MainActivity extends Activity {
     /** Wybór aplikacji do roli (nawigacja / radio). Pasujące aplikacje są na górze listy. */
     private void pickRole(final String role) {
         final boolean nav = "nav".equals(role);
-        String[] words = nav ? NAV_WORDS : RADIO_WORDS;
+        final boolean aa = "aa".equals(role);
+        String[] words = nav ? NAV_WORDS : aa ? AutoStart.AA_WORDS : RADIO_WORDS;
         List<AppItem> all = loadApps();
         List<AppItem> match = new ArrayList<>(), rest = new ArrayList<>();
         for (AppItem a : all) {
@@ -1028,7 +1035,8 @@ public class MainActivity extends Activity {
             if (m) match.add(a);
             else rest.add(a);
         }
-        Okno o = new Okno(this, nav ? "🧭 Która aplikacja to nawigacja?" : "📻 Która aplikacja to radio FM?",
+        Okno o = new Okno(this, nav ? "🧭 Która aplikacja to nawigacja?"
+                        : aa ? "🚗 Która aplikacja to Android Auto (np. ZLink5)?" : "📻 Która aplikacja to radio FM?",
                 "Pasujące są na zielono, na górze listy");
         List<AppItem> ordered = new ArrayList<>(match);
         ordered.addAll(rest);
@@ -1084,6 +1092,12 @@ public class MainActivity extends Activity {
             return true;
         });
         bar.addView(go, Ui.lp(0, Ui.dp(this, 58), 1, this, 6));
+        Button aaBtn = Ui.buttonFit(this, "🚗 Android Auto", 0xFF1565C0, 18, v -> openAA());
+        aaBtn.setOnLongClickListener(v -> {
+            pickRole("aa");
+            return true;
+        });
+        bar.addView(aaBtn, Ui.lp(Ui.dp(this, 190), Ui.dp(this, 58), 0, this, 6));
         Button me = Ui.buttonFit(this, "◎ Moja pozycja", Ui.BLUE, 18, v -> {
             if (mapView != null) mapView.evaluateJavascript("center()", null);
         });
@@ -1454,6 +1468,26 @@ public class MainActivity extends Activity {
         }), Ui.lp(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1, this, 6));
         col.addView(rv);
 
+        final Button aaT = Ui.button(this, aaLabel(), 0xFF1565C0, 18, null);
+        aaT.setOnClickListener(v -> {
+            Prefs.setAaAuto(this, !Prefs.aaAuto(this));
+            aaT.setText(aaLabel());
+        });
+        final Button aaD = Ui.button(this, aaDelayLabel(), 0xFF37474F, 18, null);
+        aaD.setOnClickListener(v -> {
+            int cur = Prefs.aaDelay(this), next = AutoStart.DELAYS[0];
+            for (int i = 0; i < AutoStart.DELAYS.length; i++) {
+                if (AutoStart.DELAYS[i] == cur) next = AutoStart.DELAYS[(i + 1) % AutoStart.DELAYS.length];
+            }
+            Prefs.setAaDelay(this, next);
+            aaD.setText(aaDelayLabel());
+        });
+        LinearLayout ra = new LinearLayout(this);
+        ra.setOrientation(LinearLayout.HORIZONTAL);
+        ra.addView(aaT, Ui.lp(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1, this, 6));
+        ra.addView(aaD, Ui.lp(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1, this, 6));
+        col.addView(ra);
+
         final Button cam = Ui.button(this, camLabel(), 0xFFC62828, 18, null);
         cam.setOnClickListener(v -> {
             Prefs.setCamAlerts(this, !Prefs.camAlerts(this));
@@ -1475,6 +1509,24 @@ public class MainActivity extends Activity {
 
     private String voiceLabel() {
         return "🗣 Kto czyta: " + Mowa.MODES[Prefs.voiceMode(this)] + "  (kliknij, by zmienić)";
+    }
+
+    private String aaLabel() {
+        android.content.ComponentName cn = AutoStart.aaApp(this);
+        return "🚀 Po starcie radia uruchom Android Auto" + (cn != null ? " (" + appName(cn) + ")" : "")
+                + ": " + (Prefs.aaAuto(this) ? "WŁĄCZONE" : "wyłączone");
+    }
+
+    private String aaDelayLabel() {
+        return "⏱ Potem: " + AutoStart.delayLabel(Prefs.aaDelay(this)) + "  (kliknij, by zmienić)";
+    }
+
+    private String appName(android.content.ComponentName cn) {
+        try {
+            return String.valueOf(getPackageManager().getActivityInfo(cn, 0).loadLabel(getPackageManager()));
+        } catch (Exception e) {
+            return cn.getPackageName();
+        }
     }
 
     private String camLabel() {

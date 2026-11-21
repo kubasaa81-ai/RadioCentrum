@@ -60,6 +60,22 @@ final class Prefs {
         c.getSharedPreferences("rc", Context.MODE_PRIVATE).edit().putBoolean("camAlerts", v).apply();
     }
 
+    static boolean aaAuto(Context c) {
+        return c.getSharedPreferences("rc", Context.MODE_PRIVATE).getBoolean("aaAuto", true);
+    }
+
+    static void setAaAuto(Context c, boolean v) {
+        c.getSharedPreferences("rc", Context.MODE_PRIVATE).edit().putBoolean("aaAuto", v).apply();
+    }
+
+    static int aaDelay(Context c) {
+        return c.getSharedPreferences("rc", Context.MODE_PRIVATE).getInt("aaDelay", 25);
+    }
+
+    static void setAaDelay(Context c, int v) {
+        c.getSharedPreferences("rc", Context.MODE_PRIVATE).edit().putInt("aaDelay", v).apply();
+    }
+
     static void setCode(Context c, String code) {
         c.getSharedPreferences("rc", Context.MODE_PRIVATE).edit().putString("code", code).apply();
     }
