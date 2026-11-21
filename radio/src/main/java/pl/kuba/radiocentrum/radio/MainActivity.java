@@ -966,6 +966,7 @@ public class MainActivity extends Activity {
                 o.btn("⌨ Klawiatura", Ui.PURPLE, true, () -> show(T_KEYPAD)));
         o.row(o.btn("📱 Aplikacje", Ui.BLUE, true, () -> show(T_APPS)),
                 o.btn("⚙ Ustawienia", Ui.SLATE, true, () -> show(T_SETTINGS)));
+        o.row(o.btn("🛠 Narzędzia radia", 0xFF00695C, true, this::tools));
         o.row(o.btn("🚗 Android Auto", 0xFF1565C0, true, this::openAA),
                 o.btn("🚗 Zmień aplikację Android Auto", 0xFF37474F, true, () -> pickRole("aa")));
         o.row(o.btn("🧭 Zmień nawigację", 0xFF2E7D32, true, () -> pickRole("nav")),
@@ -993,6 +994,60 @@ public class MainActivity extends Activity {
             return a;
         } catch (Exception e) {
             return null;
+        }
+    }
+
+    /** Skróty do ukrytych / fabrycznych ekranów radia (znalezionych w diagnostyce). */
+    private void tools() {
+        Okno o = new Okno(this, "🛠 Narzędzia radia",
+                "Skróty do ekranów producenta. W menu fabrycznym zmieniaj tylko to, co znasz – zrób najpierw zdjęcie.");
+        o.row(o.btn("🔐 Menu fabryczne (8888) – mikrofon MIC", 0xFFC62828, true,
+                () -> openComp("com.xygala.pvcanset", "com.xygala.pvcanset.PassDialogActivity")));
+        o.row(o.btn("⚙ Ustawienia pojazdu (Głośność → mikrofon)", Ui.SLATE, true,
+                        () -> openComp("com.xyauto.Settings", "com.xyauto.Settings.MainActivity")),
+                o.btn("🎚 Efekt dźwiękowy / korektor", Ui.PURPLE, true,
+                        () -> openComp("com.xy.tda7729", "com.xy.tda7729.MainActivity")));
+        o.row(o.btn("🎙 Test mikrofonu (nagraj i odsłuchaj)", Ui.GREEN, true,
+                        () -> openComp("com.android.soundrecorder", "com.android.soundrecorder.SoundRecorder")),
+                o.btn("📶 Ustawienia Bluetooth radia", Ui.BLUE, true,
+                        () -> openComp("com.autochips.bluetooth", "com.autochips.bluetooth.BtSettingsActivity")));
+        o.row(o.btn("📷 Kamera / wejście AV", 0xFF37474F, true,
+                        () -> openComp("com.autochips.android.backcar", "com.autochips.android.backcar.AVInActivity")),
+                o.btn("🎥 Rejestrator DVR", 0xFF37474F, true,
+                        () -> openComp("com.autochips.android.backcar", "com.autochips.android.backcar.DVRActivity")));
+        o.row(o.btn("🚙 Dane auta (CAN – Car Set)", 0xFF2E7D32, true, () -> openPkg("com.xygala.canbus")),
+                o.btn("🛰 Test GPS", 0xFF1565C0, true,
+                        () -> openComp("com.mediatek.ygps", "com.mediatek.ygps.YgpsActivity")));
+        o.row(o.btn("ℹ Informacje o systemie", Ui.SLATE, true,
+                        () -> openComp("com.xyauto.Settings", "com.xyauto.Settings.SystemInfoActivity")),
+                o.btn("🧪 EngineerMode (zaawansowane!)", 0xFF6D4C41, true,
+                        () -> openComp("com.mediatek.engineermode", "com.mediatek.engineermode.EngineerMode")));
+        o.cancel("✖ Zamknij");
+        o.show();
+    }
+
+    private void openComp(String pkg, String cls) {
+        try {
+            Intent i = new Intent(Intent.ACTION_MAIN);
+            i.setComponent(new android.content.ComponentName(pkg, cls));
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            startActivity(i);
+        } catch (Exception e) {
+            toast("Ten ekran nie chce się otworzyć na tym radiu");
+        }
+    }
+
+    private void openPkg(String pkg) {
+        Intent i = getPackageManager().getLaunchIntentForPackage(pkg);
+        if (i == null) {
+            toast("Brak aplikacji " + pkg);
+            return;
+        }
+        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        try {
+            startActivity(i);
+        } catch (Exception e) {
+            toast("Nie udało się otworzyć");
         }
     }
 

@@ -100,14 +100,20 @@ final class LightSensor {
 
     static boolean isOn(Context c) {
         String key = Prefs.lightKey(c);
-        if (key == null) return "night".equals(nightCfg(c));
+        if (key == null) {
+            // to radio (XYAuto + CAN Raise) zapisuje stan świateł w ustawieniu „Headlamp”
+            String h = read(c, "sys:Headlamp");
+            if (h != null && !"null".equals(h)) return !"0".equals(h.trim());
+            return "night".equals(nightCfg(c));
+        }
         String v = read(c, key);
         return v != null && v.equals(Prefs.lightOn(c));
     }
 
     static String info(Context c) {
         String key = Prefs.lightKey(c);
-        if (key == null) return "🚗 Światła: nie nauczone – używam trybu nocnego radia (zrób naukę poniżej)";
+        if (key == null) return "🚗 Światła: odczyt z radia (Headlamp = " + read(c, "sys:Headlamp")
+                + "); jeśli się nie zgadza – zrób naukę poniżej";
         return "🚗 Światła: " + key + " (zapalone = „" + Prefs.lightOn(c) + "”)";
     }
 
