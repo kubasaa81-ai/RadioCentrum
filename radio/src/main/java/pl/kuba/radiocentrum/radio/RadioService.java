@@ -335,6 +335,55 @@ public class RadioService extends Service implements Link.Handler {
         main.post(() -> handle(m));
     }
 
+    // ------------------------------------------------------------------ pliki z Pobranych radia → telefon
+
+    private static java.io.File downloadsDir() {
+        return android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS);
+    }
+
+    private boolean sendNow(JSONObject m) {
+        Link l = link;
+        return l != null && !l.isClosed() && l.send(m);
+    }
+
+    private void sendFileList() {
+        org.json.JSONArray arr = new org.json.JSONArray();
+        java.io.File[] fs = downloadsDir().listFiles();
+        if (fs != null) {
+            java.util.Arrays.sort(fs, (a, b) -> Long.compare(b.lastModified(), a.lastModified()));
+            for (java.io.File f : fs) {
+                if (f.isFile()) arr.put(J.obj("n", f.getName(), "s", f.length(), "d", f.lastModified()));
+            }
+        }
+        sendNow(J.obj("t", "files", "list", arr,
+                "err", fs == null ? "Radio nie ma dostępu do Pobranych – w Radio Centrum zezwól na dostęp do plików" : null));
+    }
+
+    private void sendFile(String name) {
+        if (name == null || name.isEmpty() || name.contains("/")) return;
+        java.io.File f = new java.io.File(downloadsDir(), name);
+        if (!f.isFile()) {
+            sendNow(J.obj("t", "toast", "text", "Nie ma takiego pliku: " + name));
+            return;
+        }
+        if (f.length() > 60L * 1024 * 1024) {
+            sendNow(J.obj("t", "toast", "text", "Plik za duży (ponad 60 MB) na przesyłanie przez Bluetooth"));
+            return;
+        }
+        if (!sendNow(J.obj("t", "file_begin", "name", name, "size", f.length()))) return;
+        try (java.io.InputStream in = new java.io.FileInputStream(f)) {
+            byte[] buf = new byte[48 * 1024];
+            int n;
+            while ((n = in.read(buf)) > 0) {
+                String b64 = android.util.Base64.encodeToString(buf, 0, n, android.util.Base64.NO_WRAP);
+                if (!sendNow(J.obj("t", "file_chunk", "name", name, "data", b64))) return;
+            }
+            sendNow(J.obj("t", "file_end", "name", name));
+        } catch (Exception e) {
+            sendNow(J.obj("t", "file_end", "name", name, "err", "błąd odczytu"));
+        }
+    }
+
     private void handle(JSONObject m) {
         switch (m.optString("t")) {
             case "hello":
@@ -352,6 +401,13 @@ public class RadioService extends Service implements Link.Handler {
                     if (Prefs.autoRead(this)) Mowa.speak(this, Popup.speech(m));
                 }
                 break;
+            case "listfiles":
+                new Thread(this::sendFileList, "rc-files").start();
+                return;
+            case "getfile":
+                final String fname = m.optString("name");
+                new Thread(() -> sendFile(fname), "rc-file").start();
+                return;
             case "dictating":
                 MainActivity.liveDictation(m.optString("text"));
                 return;

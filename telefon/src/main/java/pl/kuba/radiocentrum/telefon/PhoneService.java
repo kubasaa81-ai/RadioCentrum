@@ -69,6 +69,15 @@ public class PhoneService extends NotificationListenerService implements Link.Ha
     public static volatile String status = "Usługa nie działa";
     public static volatile PhoneService instance;
 
+    /** Ekran telefonu dostaje listę plików z radia. */
+    public interface FilesCallback {
+        void onFiles(JSONArray list, String err);
+    }
+
+    public static volatile FilesCallback filesCallback;
+    private final Map<String, java.io.OutputStream> incoming = new ConcurrentHashMap<>();
+    private final Map<String, Long> incomingSize = new ConcurrentHashMap<>();
+
     private volatile boolean running;
     private volatile Link link;
     private volatile ServerSocket server;
@@ -351,6 +360,23 @@ public class PhoneService extends NotificationListenerService implements Link.Ha
                 final String dText = m.optString("text");
                 sendExec.execute(() -> saveDiag(dName, dText));
                 break;
+            case "files":
+                final JSONArray flist = m.optJSONArray("list");
+                final String ferr = m.optString("err", null);
+                main.post(() -> {
+                    FilesCallback cb = filesCallback;
+                    if (cb != null) cb.onFiles(flist == null ? new JSONArray() : flist, ferr);
+                });
+                break;
+            case "file_begin":
+                fileBegin(m.optString("name"), m.optLong("size"));
+                break;
+            case "file_chunk":
+                fileChunk(m.optString("name"), m.optString("data"));
+                break;
+            case "file_end":
+                fileEnd(m.optString("name"), m.optString("err", null));
+                break;
             case "dictate":
                 main.post(this::startDictation);
                 break;
@@ -428,6 +454,80 @@ public class PhoneService extends NotificationListenerService implements Link.Ha
         } catch (Exception e) {
             send(J.obj("t", "toast", "text", "Nie udało się wysłać odpowiedzi"));
         }
+    }
+
+    // ------------------------------------------------------------------ pliki z radia
+
+    public void requestFileList() {
+        send(J.obj("t", "listfiles"));
+    }
+
+    public void requestFile(String name) {
+        send(J.obj("t", "getfile", "name", name));
+    }
+
+    private java.io.OutputStream openDownload(String name, String mime) throws IOException {
+        if (Build.VERSION.SDK_INT >= 29) {
+            android.content.ContentValues cv = new android.content.ContentValues();
+            cv.put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, name);
+            cv.put(android.provider.MediaStore.MediaColumns.MIME_TYPE, mime);
+            cv.put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, android.os.Environment.DIRECTORY_DOWNLOADS);
+            Uri u = getContentResolver().insert(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, cv);
+            if (u == null) throw new IOException("brak miejsca");
+            java.io.OutputStream out = getContentResolver().openOutputStream(u);
+            if (out == null) throw new IOException("brak dostępu");
+            return out;
+        }
+        return new java.io.FileOutputStream(new java.io.File(getExternalFilesDir(null), name));
+    }
+
+    private static String mimeFor(String name) {
+        String ext = android.webkit.MimeTypeMap.getFileExtensionFromUrl(name.replace(' ', '_'));
+        String mt = ext == null ? null : android.webkit.MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext.toLowerCase(Locale.ROOT));
+        return mt == null ? "application/octet-stream" : mt;
+    }
+
+    private void fileBegin(String name, long size) {
+        try {
+            java.io.OutputStream old = incoming.remove(name);
+            if (old != null) old.close();
+            incoming.put(name, openDownload(name, mimeFor(name)));
+            incomingSize.put(name, size);
+            phoneToast("📥 Pobieram z radia: " + name);
+        } catch (Exception e) {
+            phoneToast("Nie udało się zapisać pliku w telefonie");
+        }
+    }
+
+    private void fileChunk(String name, String b64) {
+        java.io.OutputStream out = incoming.get(name);
+        if (out == null) return;
+        try {
+            out.write(android.util.Base64.decode(b64, android.util.Base64.NO_WRAP));
+        } catch (Exception e) {
+            incoming.remove(name);
+            phoneToast("Błąd zapisu pliku " + name);
+        }
+    }
+
+    private void fileEnd(String name, String err) {
+        java.io.OutputStream out = incoming.remove(name);
+        incomingSize.remove(name);
+        if (out == null) return;
+        try {
+            out.close();
+        } catch (Exception ignored) {
+        }
+        if (err != null) {
+            phoneToast("Nie udało się pobrać " + name + " (" + err + ")");
+        } else {
+            phoneToast("✅ Zapisano w telefonie: Pobrane/" + name);
+            send(J.obj("t", "toast", "text", "✅ Plik " + name + " jest w telefonie (Pobrane)"));
+        }
+    }
+
+    private void phoneToast(final String text) {
+        main.post(() -> android.widget.Toast.makeText(this, text, android.widget.Toast.LENGTH_LONG).show());
     }
 
     /** Diagnostyka z radia → Pobrane w telefonie. */

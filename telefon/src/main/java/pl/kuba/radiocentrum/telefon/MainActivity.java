@@ -82,6 +82,7 @@ public class MainActivity extends Activity {
         col.addView(button("Ustawienia Bluetooth (parowanie z radiem)", 0xFF00897B,
                 v -> safeStart(new Intent(Settings.ACTION_BLUETOOTH_SETTINGS))), lp(10));
         col.addView(button("Wyślij ponownie wszystko do radia", 0xFF3949AB, v -> resend()), lp(10));
+        col.addView(button("📥 Pobierz pliki z radia (Pobrane)", 0xFF6D4C41, v -> radioFiles()), lp(10));
         col.addView(button("Ustawienia aplikacji (ograniczone ustawienia)", 0xFF546E7A, v -> openAppDetails()), lp(10));
 
         codeView = text("", 16, 0xFFFFD54F, false);
@@ -298,6 +299,49 @@ public class MainActivity extends Activity {
         } else {
             toast("Brak połączenia z radiem");
         }
+    }
+
+    /** Lista plików z Pobranych w radiu → wybór → zapis w Pobranych telefonu. */
+    private void radioFiles() {
+        final PhoneService s = PhoneService.instance;
+        if (s == null || !s.isConnected()) {
+            toast("Brak połączenia z radiem");
+            return;
+        }
+        PhoneService.filesCallback = (list, err) -> {
+            PhoneService.filesCallback = null;
+            if (err != null && !err.isEmpty()) {
+                toast(err);
+                return;
+            }
+            if (list.length() == 0) {
+                toast("W Pobranych w radiu nie ma plików");
+                return;
+            }
+            final String[] names = new String[list.length()];
+            String[] labels = new String[list.length()];
+            for (int i = 0; i < list.length(); i++) {
+                org.json.JSONObject o = list.optJSONObject(i);
+                names[i] = o == null ? "" : o.optString("n");
+                long sz = o == null ? 0 : o.optLong("s");
+                String size = sz >= 1024 * 1024 ? String.format(Locale.US, "%.1f MB", sz / 1048576.0)
+                        : String.format(Locale.US, "%d kB", Math.max(1, sz / 1024));
+                labels[i] = names[i] + "\n" + size;
+            }
+            new AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                    .setTitle("Pliki w radiu (Pobrane)")
+                    .setItems(labels, (d, w) -> {
+                        PhoneService ps = PhoneService.instance;
+                        if (ps != null) {
+                            ps.requestFile(names[w]);
+                            toast("Pobieram: " + names[w] + " – chwilę to potrwa");
+                        }
+                    })
+                    .setNegativeButton("Zamknij", null)
+                    .show();
+        };
+        s.requestFileList();
+        toast("Pytam radio o pliki…");
     }
 
     private void safeStart(Intent i) {
