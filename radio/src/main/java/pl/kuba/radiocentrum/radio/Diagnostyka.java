@@ -122,6 +122,63 @@ final class Diagnostyka {
             sb.append("błąd: ").append(e).append('\n');
         }
 
+        sec(sb, "USB – podłączone urządzenia (szukamy modemu 4G)");
+        File usb = new File("/sys/bus/usb/devices");
+        String[] devs = usb.list();
+        if (devs == null) sb.append("brak dostępu do /sys/bus/usb/devices\n");
+        else {
+            java.util.Arrays.sort(devs);
+            for (String d : devs) {
+                String base = "/sys/bus/usb/devices/" + d + "/";
+                String vid = one(base + "idVendor"), pid = one(base + "idProduct");
+                if (vid == null && pid == null) continue;
+                sb.append(d).append("  VID:PID=").append(vid).append(':').append(pid)
+                        .append("  producent=").append(one(base + "manufacturer"))
+                        .append("  produkt=").append(one(base + "product"))
+                        .append("  klasa=").append(one(base + "bDeviceClass")).append('\n');
+            }
+        }
+        sb.append("\nInterfejsy USB (sterowniki):\n");
+        if (devs != null) {
+            for (String d : devs) {
+                if (!d.contains(":")) continue;
+                String base = "/sys/bus/usb/devices/" + d + "/";
+                String drv = null;
+                try {
+                    drv = new File(base + "driver").getCanonicalFile().getName();
+                } catch (Exception ignored) {
+                }
+                sb.append(d).append("  klasa=").append(one(base + "bInterfaceClass"))
+                        .append(" pod=").append(one(base + "bInterfaceSubClass"))
+                        .append(" protokół=").append(one(base + "bInterfaceProtocol"))
+                        .append("  sterownik=").append(drv).append('\n');
+            }
+        }
+        sec(sb, "USB – sieć i obsługiwane modemy");
+        file(sb, "/proc/net/dev", 40);
+        file(sb, "/system/etc/dongle_supported_list.txt", 400);
+        file(sb, "/system/etc/dongleselect.conf", 200);
+        file(sb, "/system/etc/custom.conf", 200);
+        file(sb, "/system/etc/factory.ini", 200);
+        file(sb, "/system/etc/xyautoverno.ini", 100);
+        String[] ms = new File("/system/etc/usb_modeswitch.d").list();
+        sb.append("\n[katalog /system/etc/usb_modeswitch.d] ");
+        if (ms == null) sb.append("brak dostępu\n");
+        else {
+            java.util.Arrays.sort(ms);
+            for (String m : ms) sb.append(m).append("  ");
+            sb.append('\n');
+        }
+        String[] xy = new File("/system/etc/xy").list();
+        sb.append("\n[katalog /system/etc/xy] ");
+        if (xy == null) sb.append("brak dostępu\n");
+        else {
+            for (String m : xy) sb.append(m).append("  ");
+            sb.append('\n');
+        }
+        sb.append("\nModuły jądra (/proc/modules):\n");
+        file(sb, "/proc/modules", 200);
+
         sec(sb, "APLIKACJE (wszystkie)");
         PackageManager pm = c.getPackageManager();
         List<PackageInfo> pkgs = pm.getInstalledPackages(0);
@@ -178,6 +235,15 @@ final class Diagnostyka {
 
         sb.append("\n=== KONIEC ===\n");
         return sb.toString();
+    }
+
+    private static String one(String path) {
+        try (BufferedReader br = new BufferedReader(new FileReader(path))) {
+            String l = br.readLine();
+            return l == null ? null : l.trim();
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     private static void sec(StringBuilder sb, String t) {
