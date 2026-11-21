@@ -350,11 +350,13 @@ public class PhoneService extends NotificationListenerService implements Link.Ha
     }
 
     private int yanTries;
+    /** Radio zgłosiło zgaszenie (ekran wyłączony po zgaszeniu zapłonu). */
+    private volatile boolean carOff;
     /** Po rozłączeniu: próbuj wyłączyć Yanosika kilka razy (0 s, +20 s, +40 s, +60 s), aż zniknie. */
     private final Runnable yanStop = new Runnable() {
         @Override
         public void run() {
-            if (isConnected()) {
+            if (isConnected() && !carOff) {
                 yanTries = 0;
                 return;
             }
@@ -376,6 +378,7 @@ public class PhoneService extends NotificationListenerService implements Link.Ha
             link = l;
         }
         main.removeCallbacks(yanStop);
+        carOff = false;
         main.postDelayed(() -> {
             String msg = Yanosik.start(this);
             if (msg != null) send(J.obj("t", "toast", "text", msg));
@@ -455,6 +458,27 @@ public class PhoneService extends NotificationListenerService implements Link.Ha
                 break;
             case "file_end":
                 fileEnd(m.optString("name"), m.optString("err", null));
+                break;
+            case "car_off":
+                carOff = true;
+                Yanosik.add("Radio zgasło (wyłączony zapłon) – zamykam Yanosika");
+                main.post(() -> {
+                    main.removeCallbacks(yanStop);
+                    yanTries = 0;
+                    main.postDelayed(yanStop, 2000);
+                });
+                break;
+            case "car_on":
+                carOff = false;
+                main.post(() -> {
+                    main.removeCallbacks(yanStop);
+                    yanTries = 0;
+                    if (!Yanosik.running(this)) {
+                        Yanosik.add("Radio się włączyło");
+                        String msg = Yanosik.start(this);
+                        if (msg != null) send(J.obj("t", "toast", "text", msg));
+                    }
+                });
                 break;
             case "weather":
                 final double wLat = m.optDouble("lat"), wLon = m.optDouble("lon");
