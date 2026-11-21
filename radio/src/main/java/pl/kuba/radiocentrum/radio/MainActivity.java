@@ -49,11 +49,11 @@ public class MainActivity extends Activity {
             "Nie."};
     private static final int[] QUICK_COLORS = {Ui.BLUE, Ui.TEAL, Ui.PURPLE, Ui.ORANGE, Ui.GREEN, 0xFF2E7D32, 0xFFC62828};
 
-    private static final int T_NOTIF = 0, T_CALLS = 1, T_CONTACTS = 2, T_KEYPAD = 3, T_SETTINGS = 4;
-    private static final String[] TAB_NAMES = {"🔔 Powiadomienia", "📞 Połączenia", "📒 Kontakty", "⌨ Klawiatura", "⚙ Ustawienia"};
-    private static final int[] TAB_COLORS = {Ui.ORANGE, Ui.GREEN, Ui.BLUE, Ui.PURPLE, Ui.SLATE};
+    private static final int T_HOME = 0, T_NOTIF = 1, T_CALLS = 2, T_CONTACTS = 3, T_KEYPAD = 4, T_SETTINGS = 5;
+    private static final String[] TAB_NAMES = {"🏠 Pulpit", "🔔 Powiadomienia", "📞 Połączenia", "📒 Kontakty", "⌨ Klawiatura", "⚙ Ustawienia"};
+    private static final int[] TAB_COLORS = {Ui.TEAL, Ui.ORANGE, Ui.GREEN, Ui.BLUE, Ui.PURPLE, Ui.SLATE};
 
-    private final Button[] tabs = new Button[5];
+    private final Button[] tabs = new Button[TAB_NAMES.length];
     private FrameLayout content;
     private TextView status;
     private int tab = T_NOTIF;
@@ -67,6 +67,20 @@ public class MainActivity extends Activity {
 
     private TextView dialDisplay, dialName;
     private TextView settingsInfo;
+    private CarView carView;
+    private TextView carText, homeStatus, homeLast;
+    private final Runnable lightPoll = new Runnable() {
+        @Override
+        public void run() {
+            if (carView != null) {
+                boolean on = LightSensor.isOn(MainActivity.this);
+                carView.setLights(on);
+                carText.setText(on ? "💡 Światła włączone" : "Światła wyłączone");
+                carText.setTextColor(on ? 0xFFFFE57F : Ui.GREY);
+            }
+            tickH.postDelayed(this, 2000);
+        }
+    };
     private EditText dictateTarget;
     private String dictateBase = "";
     private static final int REQ_SPEECH = 42;
@@ -96,7 +110,7 @@ public class MainActivity extends Activity {
 
         LinearLayout top = new LinearLayout(this);
         top.setOrientation(LinearLayout.HORIZONTAL);
-        for (int i = 0; i < 5; i++) {
+        for (int i = 0; i < TAB_NAMES.length; i++) {
             final int idx = i;
             Button t = Ui.button(this, TAB_NAMES[i], TAB_COLORS[i], 18, v -> show(idx));
             t.setMaxLines(2);
@@ -114,7 +128,7 @@ public class MainActivity extends Activity {
         root.addView(content, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
 
         setContentView(root);
-        show(Popup.canDraw(this) ? T_NOTIF : T_SETTINGS);
+        show(Popup.canDraw(this) ? T_HOME : T_SETTINGS);
         handleIntent(getIntent());
     }
 
@@ -148,6 +162,13 @@ public class MainActivity extends Activity {
         Store.addListener(onChange);
         refresh();
         tickH.post(tick);
+        tickH.post(lightPoll);
+    }
+
+    @Override
+    public void onBackPressed() {
+        // jako pulpit: „wstecz” wraca na Pulpit, nie zamyka aplikacji
+        if (tab != T_HOME) show(T_HOME);
     }
 
     @Override
@@ -156,11 +177,12 @@ public class MainActivity extends Activity {
         if (active == this) active = null;
         Store.removeListener(onChange);
         tickH.removeCallbacks(tick);
+        tickH.removeCallbacks(lightPoll);
     }
 
     private void show(int idx) {
         tab = idx;
-        for (int i = 0; i < 5; i++) {
+        for (int i = 0; i < TAB_NAMES.length; i++) {
             int c = TAB_COLORS[i];
             Ui.setColor(this, tabs[i], i == idx ? c : ((c & 0x00FFFFFF) | 0x55000000));
         }
@@ -169,6 +191,8 @@ public class MainActivity extends Activity {
         contactList = null;
         letterCol = null;
         dialDisplay = dialName = settingsInfo = null;
+        carView = null;
+        carText = homeStatus = homeLast = null;
         View v;
         switch (idx) {
             case T_CALLS:
@@ -182,6 +206,9 @@ public class MainActivity extends Activity {
                 break;
             case T_SETTINGS:
                 v = buildSettings();
+                break;
+            case T_HOME:
+                v = buildHome();
                 break;
             default:
                 v = buildNotifs();
@@ -216,6 +243,23 @@ public class MainActivity extends Activity {
             status.append("   ⚠ Zezwól na okienka (⚙ Ustawienia)");
         }
         if (settingsInfo != null) settingsInfo.setText(settingsText());
+        if (homeStatus != null) {
+            homeStatus.setText(Store.linkKind != null ? "🟢 Telefon połączony (" + Store.linkKind + ")" : "🔴 Telefon niepołączony");
+            homeStatus.setTextColor(Store.linkKind != null ? 0xFF81C784 : 0xFFEF9A9A);
+            int missed = 0;
+            long dayAgo = System.currentTimeMillis() - 24L * 3600 * 1000;
+            for (JSONObject o : Store.calls) {
+                if (o.optInt("type") == 3 && o.optLong("d") > dayAgo) missed++;
+            }
+            StringBuilder sb = new StringBuilder();
+            if (missed > 0) sb.append("✖ Nieodebrane (24 h): ").append(missed).append("\n");
+            if (!Store.notifs.isEmpty()) {
+                JSONObject n = Store.notifs.get(0);
+                sb.append(Ui.appIcon(n.optString("app"))).append(" ").append(n.optString("title"))
+                        .append(": ").append(n.optString("text"));
+            }
+            homeLast.setText(sb.toString());
+        }
     }
 
     // ------------------------------------------------------------------ listy
@@ -720,6 +764,207 @@ public class MainActivity extends Activity {
         if (r != null && !r.isEmpty()) appendDictation(r.get(0));
     }
 
+    // ------------------------------------------------------------------ pulpit
+
+    private static final class AppItem {
+        String label;
+        android.content.ComponentName cn;
+        android.graphics.drawable.Drawable icon;
+        boolean fav;
+    }
+
+    private View buildHome() {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setPadding(Ui.dp(this, 6), Ui.dp(this, 2), Ui.dp(this, 6), Ui.dp(this, 6));
+
+        LinearLayout left = new LinearLayout(this);
+        left.setOrientation(LinearLayout.VERTICAL);
+        left.setGravity(Gravity.CENTER_HORIZONTAL);
+        int p = Ui.dp(this, 12);
+        left.setPadding(p, Ui.dp(this, 6), p, p);
+        left.setBackground(Ui.round(this, Ui.CARD, 20));
+
+        android.widget.TextClock clock = new android.widget.TextClock(this);
+        clock.setFormat24Hour("HH:mm");
+        clock.setFormat12Hour("HH:mm");
+        clock.setTextSize(58);
+        clock.setTextColor(Ui.WHITE);
+        clock.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+        clock.setGravity(Gravity.CENTER);
+        left.addView(clock);
+        android.widget.TextClock date = new android.widget.TextClock(this);
+        date.setFormat24Hour("EEEE, d MMMM");
+        date.setFormat12Hour("EEEE, d MMMM");
+        date.setTextSize(19);
+        date.setTextColor(Ui.GREY);
+        date.setGravity(Gravity.CENTER);
+        left.addView(date);
+
+        carView = new CarView(this);
+        left.addView(carView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
+        carText = Ui.text(this, "", 20, Ui.GREY, true);
+        carText.setGravity(Gravity.CENTER);
+        left.addView(carText);
+        homeStatus = Ui.text(this, "", 17, Ui.WHITE, true);
+        homeStatus.setPadding(0, Ui.dp(this, 6), 0, 0);
+        left.addView(homeStatus);
+        homeLast = Ui.text(this, "", 16, 0xFFE0E0E0, false);
+        homeLast.setMaxLines(3);
+        homeLast.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        homeLast.setOnClickListener(v -> show(T_NOTIF));
+        left.addView(homeLast);
+        row.addView(left, Ui.lp(0, ViewGroup.LayoutParams.MATCH_PARENT, 1, this, 4));
+
+        final android.widget.GridView grid = new android.widget.GridView(this);
+        grid.setNumColumns(android.widget.GridView.AUTO_FIT);
+        grid.setColumnWidth(Ui.dp(this, 112));
+        grid.setStretchMode(android.widget.GridView.STRETCH_COLUMN_WIDTH);
+        grid.setVerticalSpacing(Ui.dp(this, 8));
+        grid.setHorizontalSpacing(Ui.dp(this, 8));
+        grid.setSelector(new android.graphics.drawable.ColorDrawable(0));
+        final List<AppItem> apps = loadApps();
+        final BaseAdapter ad = new BaseAdapter() {
+            @Override
+            public int getCount() {
+                return apps.size();
+            }
+
+            @Override
+            public Object getItem(int i) {
+                return apps.get(i);
+            }
+
+            @Override
+            public long getItemId(int i) {
+                return i;
+            }
+
+            @Override
+            public View getView(int i, View cv, ViewGroup parent) {
+                AppItem a = apps.get(i);
+                LinearLayout t = new LinearLayout(MainActivity.this);
+                t.setOrientation(LinearLayout.VERTICAL);
+                t.setGravity(Gravity.CENTER);
+                int pp = Ui.dp(MainActivity.this, 6);
+                t.setPadding(pp, pp, pp, pp);
+                t.setBackground(Ui.round(MainActivity.this, a.fav ? 0xFF24385A : Ui.CARD, 18));
+                android.widget.ImageView iv = new android.widget.ImageView(MainActivity.this);
+                iv.setImageDrawable(a.icon);
+                int is = Ui.dp(MainActivity.this, 54);
+                t.addView(iv, new LinearLayout.LayoutParams(is, is));
+                TextView l = Ui.text(MainActivity.this, (a.fav ? "★ " : "") + a.label, 15, Ui.WHITE, false);
+                l.setGravity(Gravity.CENTER);
+                l.setMaxLines(2);
+                l.setEllipsize(android.text.TextUtils.TruncateAt.END);
+                t.addView(l);
+                t.setLayoutParams(new android.widget.AbsListView.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(MainActivity.this, 118)));
+                return t;
+            }
+        };
+        grid.setAdapter(ad);
+        grid.setOnItemClickListener((pa, v, pos, id) -> {
+            try {
+                Intent i = new Intent(Intent.ACTION_MAIN);
+                i.addCategory(Intent.CATEGORY_LAUNCHER);
+                i.setComponent(apps.get(pos).cn);
+                i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED);
+                startActivity(i);
+            } catch (Exception e) {
+                toast("Nie udało się otworzyć");
+            }
+        });
+        grid.setOnItemLongClickListener((pa, v, pos, id) -> {
+            AppItem a = apps.get(pos);
+            java.util.Set<String> f = Prefs.favs(this);
+            String k = a.cn.flattenToString();
+            if (f.contains(k)) f.remove(k);
+            else f.add(k);
+            Prefs.setFavs(this, f);
+            toast(f.contains(k) ? "★ Przypięto na początek: " + a.label : "Odpięto: " + a.label);
+            apps.clear();
+            apps.addAll(loadApps());
+            ad.notifyDataSetChanged();
+            return true;
+        });
+        LinearLayout right = new LinearLayout(this);
+        right.setOrientation(LinearLayout.VERTICAL);
+        TextView hint = Ui.text(this, "Przytrzymaj kafelek, aby przypiąć go na początek ★", 14, 0xFF78909C, false);
+        hint.setPadding(Ui.dp(this, 6), 0, 0, Ui.dp(this, 4));
+        right.addView(hint);
+        right.addView(grid, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
+        row.addView(right, Ui.lp(0, ViewGroup.LayoutParams.MATCH_PARENT, 1.7f, this, 4));
+        return row;
+    }
+
+    private List<AppItem> loadApps() {
+        android.content.pm.PackageManager pm = getPackageManager();
+        Intent i = new Intent(Intent.ACTION_MAIN);
+        i.addCategory(Intent.CATEGORY_LAUNCHER);
+        java.util.Set<String> favs = Prefs.favs(this);
+        List<AppItem> out = new ArrayList<>();
+        for (android.content.pm.ResolveInfo ri : pm.queryIntentActivities(i, 0)) {
+            if (ri.activityInfo == null || getPackageName().equals(ri.activityInfo.packageName)) continue;
+            AppItem a = new AppItem();
+            a.label = String.valueOf(ri.loadLabel(pm));
+            a.icon = ri.loadIcon(pm);
+            a.cn = new android.content.ComponentName(ri.activityInfo.packageName, ri.activityInfo.name);
+            a.fav = favs.contains(a.cn.flattenToString());
+            out.add(a);
+        }
+        final java.text.Collator col = java.text.Collator.getInstance(new Locale("pl", "PL"));
+        java.util.Collections.sort(out, (x, y) -> {
+            if (x.fav != y.fav) return x.fav ? -1 : 1;
+            return col.compare(x.label, y.label);
+        });
+        return out;
+    }
+
+    // ------------------------------------------------------------------ nauka świateł
+
+    private void lightStepOff() {
+        toast("Zapisuję… (chwila)");
+        LightSensor.snapOff = LightSensor.snapshot(this);
+        Okno o = new Okno(this, "✅ Zapisano – światła ZGASZONE", "Teraz ZAPAL światła (mijania) i kliknij krok 2.");
+        o.cancel("OK");
+        o.show();
+    }
+
+    private void lightStepOn() {
+        if (LightSensor.snapOff == null) {
+            toast("Najpierw krok 1 – przy zgaszonych światłach");
+            return;
+        }
+        toast("Zapisuję… (chwila)");
+        LightSensor.snapOn = LightSensor.snapshot(this);
+        final List<String[]> d = LightSensor.diff(LightSensor.snapOff, LightSensor.snapOn);
+        if (d.isEmpty()) {
+            Okno o = new Okno(this, "Nie znalazłem różnicy",
+                    "Radio nie zapisało nigdzie, że światła są zapalone. Spróbuj jeszcze raz (krok 1 i 2). "
+                            + "Jeśli dalej nic – radio może nie mieć podłączonego przewodu ILL / świateł z CAN. "
+                            + "Na razie rysunek auta pokazuje światła według trybu nocnego radia.");
+            o.cancel("OK");
+            o.show();
+            return;
+        }
+        Okno o = new Okno(this, "Co się zmieniło po zapaleniu świateł?",
+                "Wybierz pozycję (zwykle pierwsza jest dobra). Zgaszone → zapalone:");
+        int n = Math.min(d.size(), 12);
+        for (int i = 0; i < n; i++) {
+            final String[] r = d.get(i);
+            Button b = o.btn(r[0] + "\n" + r[1] + "  →  " + r[2], i == 0 ? Ui.GREEN : 0xFF2E3B4E, true, () -> {
+                Prefs.setLight(this, r[0], r[2]);
+                toast("Zapisano ✅ – auto na Pulpicie pokaże światła");
+                refreshStatus();
+            });
+            b.setTextSize(16);
+            o.row(b);
+        }
+        o.cancel("✖ Anuluj");
+        o.show();
+    }
+
     // ------------------------------------------------------------------ klawiatura
 
     private View buildKeypad() {
@@ -869,6 +1114,16 @@ public class MainActivity extends Activity {
         }), Ui.lp(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1, this, 6));
         col.addView(r3);
 
+        col.addView(Ui.text(this, "🚗 Nauka świateł auta (zrób raz, na postoju z włączonym silnikiem lub zapłonem):",
+                17, Ui.WHITE, true), Ui.lp(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, 0, this, 6));
+        LinearLayout rl = new LinearLayout(this);
+        rl.setOrientation(LinearLayout.HORIZONTAL);
+        rl.addView(Ui.button(this, "1️⃣ Światła ZGASZONE → zapisz", Ui.SLATE, 18, v -> lightStepOff()),
+                Ui.lp(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1, this, 6));
+        rl.addView(Ui.button(this, "2️⃣ Światła ZAPALONE → zapisz", 0xFFF9A825, 18, v -> lightStepOn()),
+                Ui.lp(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1, this, 6));
+        col.addView(rl);
+
         final Button voice = Ui.button(this, voiceLabel(), 0xFF6D4C41, 18, null);
         voice.setOnClickListener(v -> {
             Prefs.setVoiceMode(this, (Prefs.voiceMode(this) + 1) % Mowa.MODES.length);
@@ -910,6 +1165,7 @@ public class MainActivity extends Activity {
                 + "\n" + RadioService.btInfo
                 + "\n" + RadioService.wifiInfo
                 + "\nZapisany kod Wi-Fi: " + (Prefs.code(this).isEmpty() ? "brak" : Prefs.code(this))
+                + "\n" + LightSensor.info(this)
                 + "\nKontakty w radiu: " + Store.contacts.size()
                 + "   Historia połączeń: " + Store.calls.size();
     }
