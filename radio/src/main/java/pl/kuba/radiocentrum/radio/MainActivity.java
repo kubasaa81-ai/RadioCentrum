@@ -73,6 +73,7 @@ public class MainActivity extends Activity {
     private android.location.LocationListener locListener;
     private int shownCams = -1;
     private TextView carText, homeStatus, homeLast;
+    private TextView[] dataVals;
     private final Runnable lightPoll = new Runnable() {
         @Override
         public void run() {
@@ -96,6 +97,7 @@ public class MainActivity extends Activity {
         @Override
         public void run() {
             refreshStatus();
+            refreshHomeData();
             tickH.postDelayed(this, 1500);
         }
     };
@@ -221,6 +223,7 @@ public class MainActivity extends Activity {
         dialDisplay = dialName = settingsInfo = null;
         carView = null;
         carText = homeStatus = homeLast = null;
+        dataVals = null;
         stopLocation();
         shownCams = -1;
         if (mapView != null) {
@@ -841,11 +844,48 @@ public class MainActivity extends Activity {
         date.setGravity(Gravity.CENTER);
         left.addView(date);
 
-        carView = new CarView(this);
-        left.addView(carView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
-        carText = Ui.text(this, "", 20, Ui.GREY, true);
-        carText.setGravity(Gravity.CENTER);
-        left.addView(carText);
+        // dane jazdy zamiast rysunku auta
+        String[] labels = {"Prędkość", "Kierunek", "Wysokość", "Dystans trasy", "Czas jazdy", "Średnia",
+                "Maks.", "Światła", "Telefon"};
+        dataVals = new TextView[labels.length];
+        LinearLayout gridData = new LinearLayout(this);
+        gridData.setOrientation(LinearLayout.VERTICAL);
+        for (int r = 0; r < 3; r++) {
+            LinearLayout rowD = new LinearLayout(this);
+            rowD.setOrientation(LinearLayout.HORIZONTAL);
+            for (int c = 0; c < 3; c++) {
+                int idx = r * 3 + c;
+                LinearLayout tile = new LinearLayout(this);
+                tile.setOrientation(LinearLayout.VERTICAL);
+                tile.setGravity(Gravity.CENTER);
+                tile.setBackground(Ui.round(this, 0xFF111821, 14));
+                tile.setPadding(Ui.dp(this, 4), Ui.dp(this, 4), Ui.dp(this, 4), Ui.dp(this, 4));
+                TextView lab = Ui.text(this, labels[idx], 13, Ui.GREY, false);
+                lab.setGravity(Gravity.CENTER);
+                lab.setMaxLines(1);
+                Ui.autoSize(lab, 9, 13);
+                tile.addView(lab, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(this, 18)));
+                TextView val = Ui.text(this, "–", 22, Ui.WHITE, true);
+                val.setGravity(Gravity.CENTER);
+                val.setMaxLines(1);
+                Ui.autoSize(val, 11, 24);
+                tile.addView(val, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
+                dataVals[idx] = val;
+                if (idx == 3) {
+                    tile.setOnLongClickListener(v -> {
+                        Fotoradary.resetTrip();
+                        toast("Trasa wyzerowana");
+                        return true;
+                    });
+                }
+                rowD.addView(tile, Ui.lp(0, ViewGroup.LayoutParams.MATCH_PARENT, 1, this, 3));
+            }
+            gridData.addView(rowD, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
+        }
+        left.addView(gridData, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
+        TextView hintTrip = Ui.text(this, "Przytrzymaj „Dystans trasy”, aby wyzerować", 12, 0xFF78909C, false);
+        hintTrip.setGravity(Gravity.CENTER);
+        left.addView(hintTrip);
         homeStatus = Ui.text(this, "", 17, Ui.WHITE, true);
         homeStatus.setPadding(0, Ui.dp(this, 6), 0, 0);
         left.addView(homeStatus);
@@ -854,9 +894,10 @@ public class MainActivity extends Activity {
         homeLast.setEllipsize(android.text.TextUtils.TruncateAt.END);
         homeLast.setOnClickListener(v -> show(T_NOTIF));
         left.addView(homeLast);
-        row.addView(left, Ui.lp(0, ViewGroup.LayoutParams.MATCH_PARENT, 1, this, 4));
+        row.addView(left, Ui.lp(0, ViewGroup.LayoutParams.MATCH_PARENT, 1.25f, this, 4));
 
-        row.addView(buildNavPanel(), Ui.lp(0, ViewGroup.LayoutParams.MATCH_PARENT, 1.7f, this, 4));
+        row.addView(buildHomeApps(), Ui.lp(0, ViewGroup.LayoutParams.MATCH_PARENT, 1, this, 4));
+        refreshHomeData();
         return row;
     }
 
@@ -1286,6 +1327,142 @@ public class MainActivity extends Activity {
         } catch (Exception ignored) {
         }
         locListener = null;
+    }
+
+    private static final String[] DIRS = {"N", "NE", "E", "SE", "S", "SW", "W", "NW"};
+    private static final String[] DIRS_PL = {"płn.", "płn.-wsch.", "wsch.", "płd.-wsch.", "płd.", "płd.-zach.", "zach.", "płn.-zach."};
+
+    /** Dane jazdy na Pulpicie (co 1,5 s). */
+    private void refreshHomeData() {
+        if (dataVals == null) return;
+        boolean gps = Fotoradary.last != null;
+        dataVals[0].setText(gps ? Fotoradary.speedKmh + " km/h" : "brak GPS");
+        float b = Fotoradary.bearing;
+        dataVals[1].setText(b < 0 ? "–" : "➤ " + DIRS[Math.round(b / 45f) % 8]);
+        double alt = Fotoradary.altitude;
+        dataVals[2].setText(Double.isNaN(alt) ? "–" : Math.round(alt) + " m");
+        double km = Fotoradary.tripM / 1000.0;
+        dataVals[3].setText(km < 10 ? String.format(Locale.US, "%.1f km", km) : Math.round(km) + " km");
+        long min = Fotoradary.movingMs / 60000;
+        dataVals[4].setText(min >= 60 ? (min / 60) + " h " + (min % 60) + " min" : min + " min");
+        double hrs = Fotoradary.movingMs / 3600000.0;
+        dataVals[5].setText(hrs > 0.01 ? Math.round(km / hrs) + " km/h" : "–");
+        dataVals[6].setText(Fotoradary.maxKmh > 0 ? Fotoradary.maxKmh + " km/h" : "–");
+        boolean on = LightSensor.isOn(this);
+        dataVals[7].setText(on ? "💡 WŁ" : "wył.");
+        dataVals[7].setTextColor(on ? 0xFFFFE57F : Ui.WHITE);
+        int bat = Store.phoneBat;
+        dataVals[8].setText(Store.linkKind == null ? "brak" : bat < 0 ? "połączony"
+                : "🔋 " + bat + "%" + (Store.phoneChg ? " ⚡" : ""));
+        dataVals[8].setTextColor(bat >= 0 && bat <= 15 && !Store.phoneChg ? 0xFFEF5350 : Ui.WHITE);
+    }
+
+    /** Prawa strona Pulpitu: tylko wybrane aplikacje + „Dodaj / usuń aplikacje”. */
+    private View buildHomeApps() {
+        LinearLayout col = new LinearLayout(this);
+        col.setOrientation(LinearLayout.VERTICAL);
+        final List<AppItem> chosen = new ArrayList<>();
+        for (AppItem a : loadApps()) if (a.fav) chosen.add(a);
+
+        if (chosen.isEmpty()) {
+            TextView h = Ui.text(this, "Nie wybrano jeszcze aplikacji.\nKliknij przycisk poniżej i zaznacz, co ma być na Pulpicie.",
+                    18, Ui.GREY, false);
+            h.setGravity(Gravity.CENTER);
+            col.addView(h, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
+        } else {
+            android.widget.GridView grid = new android.widget.GridView(this);
+            grid.setNumColumns(android.widget.GridView.AUTO_FIT);
+            grid.setColumnWidth(Ui.dp(this, 110));
+            grid.setStretchMode(android.widget.GridView.STRETCH_COLUMN_WIDTH);
+            grid.setVerticalSpacing(Ui.dp(this, 8));
+            grid.setHorizontalSpacing(Ui.dp(this, 8));
+            grid.setSelector(new android.graphics.drawable.ColorDrawable(0));
+            grid.setAdapter(new BaseAdapter() {
+                @Override
+                public int getCount() {
+                    return chosen.size();
+                }
+
+                @Override
+                public Object getItem(int i) {
+                    return chosen.get(i);
+                }
+
+                @Override
+                public long getItemId(int i) {
+                    return i;
+                }
+
+                @Override
+                public View getView(int i, View cv, ViewGroup parent) {
+                    AppItem a = chosen.get(i);
+                    LinearLayout t = new LinearLayout(MainActivity.this);
+                    t.setOrientation(LinearLayout.VERTICAL);
+                    t.setGravity(Gravity.CENTER);
+                    int pp = Ui.dp(MainActivity.this, 6);
+                    t.setPadding(pp, pp, pp, pp);
+                    t.setBackground(Ui.round(MainActivity.this, 0xFF24385A, 18));
+                    android.widget.ImageView iv = new android.widget.ImageView(MainActivity.this);
+                    iv.setImageDrawable(a.icon);
+                    int is = Ui.dp(MainActivity.this, 56);
+                    t.addView(iv, new LinearLayout.LayoutParams(is, is));
+                    TextView l = Ui.text(MainActivity.this, a.label, 15, Ui.WHITE, false);
+                    l.setGravity(Gravity.CENTER);
+                    l.setMaxLines(2);
+                    l.setEllipsize(android.text.TextUtils.TruncateAt.END);
+                    t.addView(l);
+                    t.setLayoutParams(new android.widget.AbsListView.LayoutParams(
+                            ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(MainActivity.this, 118)));
+                    return t;
+                }
+            });
+            grid.setOnItemClickListener((pa, v, pos, id) -> launch(chosen.get(pos).cn));
+            grid.setOnItemLongClickListener((pa, v, pos, id) -> {
+                AppItem a = chosen.get(pos);
+                java.util.Set<String> f = Prefs.favs(this);
+                f.remove(a.cn.flattenToString());
+                Prefs.setFavs(this, f);
+                toast("Usunięto z Pulpitu: " + a.label);
+                show(T_HOME);
+                return true;
+            });
+            col.addView(grid, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
+        }
+        col.addView(Ui.button(this, "➕ Dodaj / usuń aplikacje", Ui.TEAL, 18, v -> chooseHomeApps()),
+                Ui.lp(ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(this, 56), 0, this, 4));
+        return col;
+    }
+
+    /** Lista wszystkich aplikacji – kliknięcie zaznacza / odznacza. */
+    private void chooseHomeApps() {
+        final Okno o = new Okno(this, "Aplikacje na Pulpicie", "Kliknij, aby zaznaczyć ✓ lub odznaczyć");
+        final java.util.Set<String> f = Prefs.favs(this);
+        List<AppItem> all = loadApps();
+        for (int i = 0; i < all.size(); i += 2) {
+            Button b1 = favToggle(o, all.get(i), f);
+            Button b2 = i + 1 < all.size() ? favToggle(o, all.get(i + 1), f) : null;
+            o.row(b1, b2);
+        }
+        o.cancel("✅ Gotowe");
+        o.d.setOnDismissListener(d -> {
+            Prefs.setFavs(this, f);
+            if (tab == T_HOME) show(T_HOME);
+        });
+        o.show();
+    }
+
+    private Button favToggle(Okno o, final AppItem a, final java.util.Set<String> f) {
+        final String k = a.cn.flattenToString();
+        final Button[] ref = new Button[1];
+        ref[0] = o.btn((f.contains(k) ? "✓ " : "") + a.label, f.contains(k) ? 0xFF2E7D32 : 0xFF2E3B4E, false, () -> {
+            if (f.contains(k)) f.remove(k);
+            else f.add(k);
+            boolean on = f.contains(k);
+            ref[0].setText((on ? "✓ " : "") + a.label);
+            Ui.setColor(this, ref[0], on ? 0xFF2E7D32 : 0xFF2E3B4E);
+        });
+        ref[0].setTextSize(17);
+        return ref[0];
     }
 
     private List<AppItem> loadApps() {

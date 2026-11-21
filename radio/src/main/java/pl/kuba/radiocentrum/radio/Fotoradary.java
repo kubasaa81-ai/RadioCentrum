@@ -42,6 +42,21 @@ final class Fotoradary {
     static volatile int nearestM = -1, nearestLim;
     static volatile long savedAt;
 
+    // komputer trasy (z GPS)
+    static volatile double tripM;
+    static volatile long movingMs;
+    static volatile int maxKmh;
+    static volatile float bearing = -1;
+    static volatile double altitude = Double.NaN;
+    private static Location prev;
+    private static long lastMoveAt;
+
+    static void resetTrip() {
+        tripM = 0;
+        movingMs = 0;
+        maxKmh = 0;
+    }
+
     private static final Set<Long> alerted = new HashSet<>();
     private static double fetchLat = 999, fetchLon = 999;
     private static volatile boolean fetching;
@@ -96,6 +111,22 @@ final class Fotoradary {
     private static void onLocation(Context c, Location l) {
         last = l;
         speedKmh = l.hasSpeed() ? Math.round(l.getSpeed() * 3.6f) : 0;
+        long now = l.getTime();
+        if (l.hasBearing() && speedKmh >= 5) bearing = l.getBearing();
+        if (l.hasAltitude()) altitude = l.getAltitude();
+        if (speedKmh >= 3) {
+            if (lastMoveAt != 0 && now - lastMoveAt > 2L * 3600 * 1000) resetTrip(); // nowa trasa po 2 h postoju
+            lastMoveAt = now;
+        }
+        if (prev != null && LocationManager.GPS_PROVIDER.equals(l.getProvider())) {
+            long dt = now - prev.getTime();
+            if (dt > 0 && dt < 10000 && speedKmh >= 3 && (!l.hasAccuracy() || l.getAccuracy() < 30)) {
+                tripM += prev.distanceTo(l);
+                movingMs += dt;
+            }
+        }
+        if (speedKmh > maxKmh && speedKmh < 250) maxKmh = speedKmh;
+        if (LocationManager.GPS_PROVIDER.equals(l.getProvider())) prev = l;
         if (!fetching && (cams.isEmpty() || System.currentTimeMillis() - savedAt > 7L * 24 * 3600 * 1000)
                 && dist(l.getLatitude(), l.getLongitude(), fetchLat, fetchLon) > 20000) {
             fetch(c, l.getLatitude(), l.getLongitude()); // gdy radio ma internet

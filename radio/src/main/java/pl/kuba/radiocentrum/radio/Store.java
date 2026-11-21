@@ -26,6 +26,8 @@ final class Store {
     static final List<JSONObject> notifs = new ArrayList<>();
     static String phoneName = "";
     static String linkKind = null; // null = brak połączenia
+    static int phoneBat = -1;
+    static boolean phoneChg;
 
     private static final List<Runnable> listeners = new ArrayList<>();
     private static boolean loaded;

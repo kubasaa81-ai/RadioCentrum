@@ -84,6 +84,22 @@ public class PhoneService extends NotificationListenerService implements Link.Ha
     private final ExecutorService sendExec = Executors.newSingleThreadExecutor();
     private Handler main;
     private BroadcastReceiver phoneReceiver;
+    private BroadcastReceiver batReceiver;
+    private int lastBat = -2;
+    private boolean lastChg;
+
+    private void sendBattery(Intent i) {
+        if (i == null) return;
+        int level = i.getIntExtra(android.os.BatteryManager.EXTRA_LEVEL, -1);
+        int scale = i.getIntExtra(android.os.BatteryManager.EXTRA_SCALE, 100);
+        int st = i.getIntExtra(android.os.BatteryManager.EXTRA_STATUS, -1);
+        boolean chg = st == android.os.BatteryManager.BATTERY_STATUS_CHARGING || st == android.os.BatteryManager.BATTERY_STATUS_FULL;
+        int pct = level < 0 || scale <= 0 ? -1 : Math.round(level * 100f / scale);
+        if (pct == lastBat && chg == lastChg) return;
+        lastBat = pct;
+        lastChg = chg;
+        send(J.obj("t", "phone", "bat", pct, "chg", chg));
+    }
     private final Map<String, Notification.Action> replyActions = new ConcurrentHashMap<>();
     private TextToSpeech tts;
     private volatile boolean ttsReady;
@@ -101,6 +117,13 @@ public class PhoneService extends NotificationListenerService implements Link.Ha
         new Thread(this::wifiLoop, "rc-wifi").start();
         new Thread(this::beaconLoop, "rc-beacon").start();
         registerPhoneReceiver();
+        batReceiver = new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context c, Intent i) {
+                sendBattery(i);
+            }
+        };
+        registerReceiver(batReceiver, new IntentFilter(Intent.ACTION_BATTERY_CHANGED));
         try {
             tts = new TextToSpeech(this, st -> {
                 if (st == TextToSpeech.SUCCESS && tts != null) {
@@ -142,6 +165,7 @@ public class PhoneService extends NotificationListenerService implements Link.Ha
         if (main != null) main.removeCallbacksAndMessages(null);
         try {
             if (phoneReceiver != null) unregisterReceiver(phoneReceiver);
+            if (batReceiver != null) unregisterReceiver(batReceiver);
         } catch (Exception ignored) {
         }
         Link l = link;
@@ -314,6 +338,8 @@ public class PhoneService extends NotificationListenerService implements Link.Ha
         sendExec.execute(() -> {
             l.send(J.obj("t", "hello", "name", deviceName()));
             sendAll(l);
+            lastBat = -2;
+            main.post(() -> sendBattery(registerReceiver(null, new IntentFilter(Intent.ACTION_BATTERY_CHANGED))));
         });
         // baza fotoradarów dla radia (osobny wątek – pobieranie może chwilę trwać)
         new Thread(() -> {

@@ -437,6 +437,10 @@ public class RadioService extends Service implements Link.Handler {
                     if (Prefs.autoRead(this)) Mowa.speak(this, Popup.speech(m));
                 }
                 break;
+            case "phone":
+                Store.phoneBat = m.optInt("bat", -1);
+                Store.phoneChg = m.optBoolean("chg");
+                return;
             case "listfiles":
                 new Thread(this::sendFileList, "rc-files").start();
                 return;
