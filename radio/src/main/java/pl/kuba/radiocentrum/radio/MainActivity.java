@@ -1094,10 +1094,6 @@ public class MainActivity extends Activity {
         o.row(o.btn("📱 Aplikacje", Ui.BLUE, true, () -> show(T_APPS)),
                 o.btn("⚙ Ustawienia", Ui.SLATE, true, () -> show(T_SETTINGS)));
         o.row(o.btn("🛠 Narzędzia radia", 0xFF00695C, true, this::tools));
-        o.row(o.btn("🚗 Android Auto", 0xFF1565C0, true, this::openAA),
-                o.btn("🚗 Zmień aplikację Android Auto", 0xFF37474F, true, () -> pickRole("aa")));
-        o.row(o.btn("🧭 Zmień nawigację", 0xFF2E7D32, true, () -> pickRole("nav")),
-                o.btn("📻 Zmień aplikację radia", 0xFFE65100, true, () -> pickRole("radio")));
         o.cancel("✖ Zamknij");
         o.show();
     }
@@ -1824,6 +1820,17 @@ public class MainActivity extends Activity {
         ra.addView(aaT, Ui.lp(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1, this, 6));
         ra.addView(aaD, Ui.lp(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1, this, 6));
         col.addView(ra);
+
+        // wybór aplikacji (przeniesione z menu „Więcej”)
+        LinearLayout rr = new LinearLayout(this);
+        rr.setOrientation(LinearLayout.HORIZONTAL);
+        rr.addView(Ui.buttonFit(this, "🚗 Aplikacja Android Auto", 0xFF37474F, 18, v -> pickRole("aa")),
+                Ui.lp(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1, this, 6));
+        rr.addView(Ui.buttonFit(this, "Nawigacja", 0xFF2E7D32, 18, v -> pickRole("nav")),
+                Ui.lp(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1, this, 6));
+        rr.addView(Ui.buttonFit(this, "📻 Aplikacja radia", 0xFFE65100, 18, v -> pickRole("radio")),
+                Ui.lp(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1, this, 6));
+        col.addView(rr);
 
         final Button cam = Ui.button(this, camLabel(), 0xFFC62828, 18, null);
         cam.setOnClickListener(v -> {
