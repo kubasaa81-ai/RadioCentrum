@@ -85,6 +85,7 @@ public class PhoneService extends NotificationListenerService implements Link.Ha
     private Handler main;
     private BroadcastReceiver phoneReceiver;
     private BroadcastReceiver batReceiver;
+    private BroadcastReceiver aclReceiver;
     private int lastBat = -2;
     private boolean lastChg;
 
@@ -124,6 +125,22 @@ public class PhoneService extends NotificationListenerService implements Link.Ha
             }
         };
         registerReceiver(batReceiver, new IntentFilter(Intent.ACTION_BATTERY_CHANGED));
+        aclReceiver = new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context c, Intent i) {
+                BluetoothDevice d = i.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
+                String mac = Prefs.radioMac(PhoneService.this);
+                if (d == null || mac == null || !mac.equalsIgnoreCase(d.getAddress())) return;
+                Yanosik.add("Bluetooth radia rozłączony (wyłączone auto)");
+                Link l = link;
+                if (l != null && "Bluetooth".equals(l.kind)) l.close();
+                main.removeCallbacks(yanStop);
+                main.postDelayed(yanStop, 30000);
+            }
+        };
+        IntentFilter af = new IntentFilter(BluetoothDevice.ACTION_ACL_DISCONNECTED);
+        if (Build.VERSION.SDK_INT >= 33) registerReceiver(aclReceiver, af, Context.RECEIVER_EXPORTED);
+        else registerReceiver(aclReceiver, af);
         try {
             tts = new TextToSpeech(this, st -> {
                 if (st == TextToSpeech.SUCCESS && tts != null) {
@@ -166,6 +183,7 @@ public class PhoneService extends NotificationListenerService implements Link.Ha
         try {
             if (phoneReceiver != null) unregisterReceiver(phoneReceiver);
             if (batReceiver != null) unregisterReceiver(batReceiver);
+            if (aclReceiver != null) unregisterReceiver(aclReceiver);
         } catch (Exception ignored) {
         }
         Link l = link;
@@ -192,6 +210,11 @@ public class PhoneService extends NotificationListenerService implements Link.Ha
     }
 
     // ------------------------------------------------------------------ publiczne (dla ekranu)
+
+    /** Test z ekranu telefonu. */
+    public String stopYanosikNow() {
+        return Yanosik.stop(this, true);
+    }
 
     public boolean isConnected() {
         Link l = link;
@@ -326,7 +349,7 @@ public class PhoneService extends NotificationListenerService implements Link.Ha
     }
 
     private final Runnable yanStop = () -> {
-        if (!isConnected()) Yanosik.stop(this);
+        if (!isConnected()) Yanosik.stop(this, false);
     };
 
     private void startLink(final Link l) {
@@ -364,9 +387,9 @@ public class PhoneService extends NotificationListenerService implements Link.Ha
         }
         if (running && !isConnected()) {
             status = "Rozłączono – szukam radia…";
-            // krótkie zerwania (np. restart radia) nie wyłączają Yanosika – dopiero po 45 s
+            // krótkie zerwania (np. restart radia) nie wyłączają Yanosika – dopiero po 30 s
             main.removeCallbacks(yanStop);
-            main.postDelayed(yanStop, 45000);
+            main.postDelayed(yanStop, 30000);
         }
     }
 

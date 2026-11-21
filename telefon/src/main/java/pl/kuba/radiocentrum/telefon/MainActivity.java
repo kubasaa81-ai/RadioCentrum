@@ -92,6 +92,11 @@ public class MainActivity extends Activity {
         col.addView(yanButton, lp(10));
         updateYanButton();
         col.addView(button("👁 Podgląd powiadomień Yanosika", 0xFF5E35B1, v -> yanLog()), lp(10));
+        col.addView(button("🛑 Test: wyłącz Yanosika teraz", 0xFF6A1B9A, v -> {
+            PhoneService ps = PhoneService.instance;
+            if (ps == null) toast("Usługa nie działa – zrób krok 2");
+            else toast(ps.stopYanosikNow());
+        }), lp(10));
 
         codeView = text("", 16, 0xFFFFD54F, false);
         codeView.setPadding(p, p, p, p);

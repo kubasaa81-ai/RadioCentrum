@@ -113,43 +113,57 @@ final class Yanosik {
         }
     }
 
-    /** Radio rozłączone na dłużej – wyłącz Yanosika. */
-    static void stop(PhoneService s) {
-        if (!Prefs.yanAuto(s)) return;
+    /** Radio rozłączone na dłużej – wyłącz Yanosika. force = test z przycisku. */
+    static String stop(PhoneService s, boolean force) {
+        if (!force && !Prefs.yanAuto(s)) return "Wyłączanie Yanosika jest wyłączone w ustawieniach";
         String y = pkg(s);
-        if (y == null) return;
-        boolean done = false;
+        if (y == null) return "Nie znalazłem Yanosika w telefonie";
+        add((force ? "TEST: " : "Rozłączono z radiem – ") + "próbuję wyłączyć Yanosika");
+        String used = null;
+        int notifs = 0;
+        List<String> seen = new ArrayList<>();
         try {
             StatusBarNotification[] act = s.getActiveNotifications();
             if (act != null) {
                 for (StatusBarNotification sbn : act) {
                     if (!y.equals(sbn.getPackageName())) continue;
-                    Notification.Action[] as = sbn.getNotification().actions;
-                    if (as == null) continue;
+                    notifs++;
+                    Notification n = sbn.getNotification();
+                    List<Notification.Action> as = new ArrayList<>();
+                    if (n.actions != null) for (Notification.Action a : n.actions) as.add(a);
+                    try {
+                        as.addAll(new Notification.WearableExtender(n).getActions());
+                    } catch (Exception ignored) {
+                    }
                     for (Notification.Action a : as) {
                         String t = String.valueOf(a.title).toLowerCase(Locale.ROOT);
-                        if (t.matches(".*(zako|wyłącz|wylacz|zamknij|wyjd|wyjś|wyjsc|koniec|exit|quit|stop|close).*")) {
+                        seen.add(String.valueOf(a.title));
+                        if (used == null && t.matches(".*(zako|wyłącz|wylacz|zamknij|wyjd|wyjś|wyjsc|koniec|zatrzymaj|exit|quit|stop|close|off).*")) {
                             try {
                                 a.actionIntent.send();
-                                done = true;
-                                add("Rozłączono z radiem – wyłączam Yanosika („" + a.title + "”)");
-                            } catch (Exception ignored) {
+                                used = String.valueOf(a.title);
+                            } catch (Exception e) {
+                                add("Przycisk „" + a.title + "” nie zadziałał: " + e.getMessage());
                             }
-                            break;
                         }
                     }
-                    if (done) break;
                 }
             }
-        } catch (Exception ignored) {
+        } catch (Exception e) {
+            add("Błąd odczytu powiadomień: " + e.getMessage());
         }
         try {
             ActivityManager am = (ActivityManager) s.getSystemService(Context.ACTIVITY_SERVICE);
             if (am != null) am.killBackgroundProcesses(y);
         } catch (Exception ignored) {
         }
-        if (!done) add("Rozłączono z radiem – Yanosik nie ma przycisku „Zakończ” w powiadomieniu, zamykam go w tle");
         startedByUs = false;
+        String res;
+        if (notifs == 0) res = "Yanosik nie pokazuje żadnego powiadomienia – chyba już nie działa";
+        else if (used != null) res = "Wysłano „" + used + "” do Yanosika ✅";
+        else res = "Yanosik ma " + notifs + " powiadom. i przyciski " + seen + " – żaden nie wyłącza aplikacji";
+        add(res);
+        return res;
     }
 
     // ------------------------------------------------------------------ ostrzeżenia
