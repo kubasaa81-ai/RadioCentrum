@@ -98,6 +98,7 @@ public class RadioService extends Service implements Link.Handler {
         startForeground(1, buildNotification());
         Store.load(this);
         Mowa.init(this);
+        Fotoradary.load(this);
         Fotoradary.start(this);
         // start radia: Android Auto (ZLink), potem Pulpit
         AutoStart.run(this);
@@ -356,6 +357,9 @@ public class RadioService extends Service implements Link.Handler {
                 return;
             case "dictated":
                 MainActivity.deliverDictation(this, m.optString("text"), m.optString("err"));
+                return;
+            case "cams":
+                Fotoradary.setAll(this, m.optJSONArray("list"));
                 return;
             case "toast":
                 Toast.makeText(this, m.optString("text"), Toast.LENGTH_LONG).show();

@@ -38,7 +38,9 @@ final class Fotoradary {
     static volatile int version;
     static volatile int speedKmh;
     static volatile Location last;
-    static volatile String info = "📷 Fotoradary: czekam na GPS";
+    static volatile String info = "📷 Fotoradary: brak bazy – pobierze ją telefon";
+    static volatile int nearestM = -1, nearestLim;
+    static volatile long savedAt;
 
     private static final Set<Long> alerted = new HashSet<>();
     private static double fetchLat = 999, fetchLon = 999;
@@ -55,6 +57,7 @@ final class Fotoradary {
             return;
         }
         final Context app = c.getApplicationContext();
+        load(app);
         LocationManager lm = (LocationManager) app.getSystemService(Context.LOCATION_SERVICE);
         if (lm == null) return;
         listener = new LocationListener() {
@@ -93,10 +96,10 @@ final class Fotoradary {
     private static void onLocation(Context c, Location l) {
         last = l;
         speedKmh = l.hasSpeed() ? Math.round(l.getSpeed() * 3.6f) : 0;
-        if (dist(l.getLatitude(), l.getLongitude(), fetchLat, fetchLon) > 8000 && !fetching) {
-            fetch(l.getLatitude(), l.getLongitude());
+        if (!fetching && (cams.isEmpty() || System.currentTimeMillis() - savedAt > 7L * 24 * 3600 * 1000)
+                && dist(l.getLatitude(), l.getLongitude(), fetchLat, fetchLon) > 20000) {
+            fetch(c, l.getLatitude(), l.getLongitude()); // gdy radio ma internet
         }
-        if (!Prefs.camAlerts(c)) return;
         double best = 1e9;
         double[] bc = null;
         for (double[] cam : cams) {
@@ -108,6 +111,9 @@ final class Fotoradary {
                 bc = cam;
             }
         }
+        nearestM = bc == null ? -1 : (int) best;
+        nearestLim = bc == null ? 0 : (int) bc[2];
+        if (!Prefs.camAlerts(c)) return;
         if (bc != null && best < 600 && speedKmh >= 20 && !alerted.contains((long) bc[3])) {
             alerted.add((long) bc[3]);
             int m = (int) (Math.round(best / 50.0) * 50);
@@ -120,13 +126,14 @@ final class Fotoradary {
         }
     }
 
-    private static void fetch(final double lat, final double lon) {
+    private static void fetch(final Context c, final double lat, final double lon) {
         fetching = true;
-        info = "📷 Fotoradary: pobieram z OpenStreetMap…";
+        fetchLat = lat;
+        fetchLon = lon;
         new Thread(() -> {
             try {
-                String q = "[out:json][timeout:25];node[\"highway\"=\"speed_camera\"](around:30000,"
-                        + String.format(Locale.US, "%.5f,%.5f", lat, lon) + ");out;";
+                String q = "[out:json][timeout:90];area[\"ISO3166-1\"=\"PL\"][admin_level=2]->.a;"
+                        + "node[\"highway\"=\"speed_camera\"](area.a);out;";
                 URL u = new URL("https://overpass-api.de/api/interpreter?data=" + URLEncoder.encode(q, "UTF-8"));
                 HttpURLConnection con = (HttpURLConnection) u.openConnection();
                 con.setConnectTimeout(15000);
@@ -155,20 +162,72 @@ final class Fotoradary {
                         got.add(new double[]{o.optDouble("lat"), o.optDouble("lon"), lim, o.optLong("id")});
                     }
                 }
-                new android.os.Handler(Looper.getMainLooper()).post(() -> {
-                    cams.clear();
-                    cams.addAll(got);
-                    version++;
-                    fetchLat = lat;
-                    fetchLon = lon;
-                    info = "📷 Fotoradary w promieniu 30 km: " + got.size();
-                });
-            } catch (Exception e) {
-                info = "📷 Fotoradary: brak internetu – spróbuję ponownie";
+                if (!got.isEmpty()) {
+                    JSONArray arr = new JSONArray();
+                    for (double[] d : got) {
+                        JSONArray r = new JSONArray();
+                        r.put(d[0]);
+                        r.put(d[1]);
+                        r.put((int) d[2]);
+                        r.put((long) d[3]);
+                        arr.put(r);
+                    }
+                    final JSONArray fa = arr;
+                    new android.os.Handler(Looper.getMainLooper()).post(() -> setAll(c, fa));
+                }
+            } catch (Exception ignored) {
+                // brak internetu w radiu – bazę dośle telefon
             } finally {
                 fetching = false;
             }
         }, "rc-cams").start();
+    }
+
+    /** Baza z telefonu albo z internetu: [[lat,lon,limit,id],...] – zapisywana w radiu. */
+    static void setAll(Context c, JSONArray a) {
+        if (a == null || a.length() == 0) return;
+        List<double[]> got = new ArrayList<>();
+        for (int i = 0; i < a.length(); i++) {
+            JSONArray r = a.optJSONArray(i);
+            if (r == null || r.length() < 4) continue;
+            got.add(new double[]{r.optDouble(0), r.optDouble(1), r.optInt(2), r.optLong(3)});
+        }
+        if (got.isEmpty()) return;
+        cams.clear();
+        cams.addAll(got);
+        version++;
+        savedAt = System.currentTimeMillis();
+        info = "📷 Fotoradary w bazie (cała Polska): " + cams.size();
+        try (java.io.FileOutputStream out = new java.io.FileOutputStream(new java.io.File(c.getFilesDir(), "cams.json"))) {
+            out.write(J.obj("at", savedAt, "list", a).toString().getBytes(StandardCharsets.UTF_8));
+        } catch (Exception ignored) {
+        }
+    }
+
+    private static boolean loaded;
+
+    static void load(Context c) {
+        if (loaded) return;
+        loaded = true;
+        java.io.File f = new java.io.File(c.getFilesDir(), "cams.json");
+        if (!f.exists()) return;
+        try (java.io.FileInputStream in = new java.io.FileInputStream(f)) {
+            ByteArrayOutputStream bo = new ByteArrayOutputStream();
+            byte[] buf = new byte[8192];
+            int n;
+            while ((n = in.read(buf)) > 0) bo.write(buf, 0, n);
+            JSONObject o = new JSONObject(new String(bo.toByteArray(), StandardCharsets.UTF_8));
+            JSONArray a = o.optJSONArray("list");
+            if (a == null) return;
+            for (int i = 0; i < a.length(); i++) {
+                JSONArray r = a.optJSONArray(i);
+                if (r != null && r.length() >= 4) cams.add(new double[]{r.optDouble(0), r.optDouble(1), r.optInt(2), r.optLong(3)});
+            }
+            savedAt = o.optLong("at");
+            version++;
+            info = "📷 Fotoradary w bazie (cała Polska): " + cams.size();
+        } catch (Exception ignored) {
+        }
     }
 
     static String json() {

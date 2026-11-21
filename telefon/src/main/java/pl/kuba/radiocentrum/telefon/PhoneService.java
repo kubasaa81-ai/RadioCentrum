@@ -306,6 +306,11 @@ public class PhoneService extends NotificationListenerService implements Link.Ha
             l.send(J.obj("t", "hello", "name", deviceName()));
             sendAll(l);
         });
+        // baza fotoradarów dla radia (osobny wątek – pobieranie może chwilę trwać)
+        new Thread(() -> {
+            JSONArray cams = Fotoradary.get(this);
+            if (cams != null && cams.length() > 0) l.send(J.obj("t", "cams", "list", cams));
+        }, "rc-cams").start();
     }
 
     @Override
@@ -340,6 +345,11 @@ public class PhoneService extends NotificationListenerService implements Link.Ha
                 final String smsNum = m.optString("num");
                 final String smsText = m.optString("text");
                 sendExec.execute(() -> sendSms(smsNum, smsText));
+                break;
+            case "diag":
+                final String dName = m.optString("name", "RadioCentrum-diagnostyka.txt");
+                final String dText = m.optString("text");
+                sendExec.execute(() -> saveDiag(dName, dText));
                 break;
             case "dictate":
                 main.post(this::startDictation);
@@ -417,6 +427,32 @@ public class PhoneService extends NotificationListenerService implements Link.Ha
             send(J.obj("t", "toast", "text", "Wysłano odpowiedź ✅"));
         } catch (Exception e) {
             send(J.obj("t", "toast", "text", "Nie udało się wysłać odpowiedzi"));
+        }
+    }
+
+    /** Diagnostyka z radia → Pobrane w telefonie. */
+    private void saveDiag(String name, String text) {
+        try {
+            if (Build.VERSION.SDK_INT >= 29) {
+                android.content.ContentValues cv = new android.content.ContentValues();
+                cv.put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, name);
+                cv.put(android.provider.MediaStore.MediaColumns.MIME_TYPE, "text/plain");
+                cv.put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, android.os.Environment.DIRECTORY_DOWNLOADS);
+                Uri u = getContentResolver().insert(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, cv);
+                if (u == null) throw new IOException("brak miejsca");
+                try (java.io.OutputStream out = getContentResolver().openOutputStream(u)) {
+                    if (out == null) throw new IOException("brak dostępu");
+                    out.write(text.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                }
+            } else {
+                java.io.File f = new java.io.File(getExternalFilesDir(null), name);
+                try (java.io.FileOutputStream out = new java.io.FileOutputStream(f)) {
+                    out.write(text.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                }
+            }
+            send(J.obj("t", "toast", "text", "✅ Diagnostyka zapisana w telefonie: Pobrane/" + name));
+        } catch (Exception e) {
+            send(J.obj("t", "toast", "text", "Nie udało się zapisać diagnostyki w telefonie"));
         }
     }
 

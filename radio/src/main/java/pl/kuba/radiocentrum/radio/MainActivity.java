@@ -268,10 +268,10 @@ public class MainActivity extends Activity {
     private void refreshStatus() {
         if (Store.linkKind != null) {
             String n = Store.phoneName == null || Store.phoneName.isEmpty() ? "telefonem" : Store.phoneName;
-            status.setText("🟢 Połączono z " + n + " (" + Store.linkKind + ")");
+            status.setText("● Połączono z " + n + " (" + Store.linkKind + ")");
             status.setTextColor(0xFF81C784);
         } else {
-            status.setText("🔴 Brak połączenia z telefonem – " + RadioService.btInfo);
+            status.setText("● Brak połączenia z telefonem – " + RadioService.btInfo);
             status.setTextColor(0xFFEF9A9A);
         }
         if (!Popup.canDraw(this)) {
@@ -279,7 +279,7 @@ public class MainActivity extends Activity {
         }
         if (settingsInfo != null) settingsInfo.setText(settingsText());
         if (homeStatus != null) {
-            homeStatus.setText(Store.linkKind != null ? "🟢 Telefon połączony (" + Store.linkKind + ")" : "🔴 Telefon niepołączony");
+            homeStatus.setText(Store.linkKind != null ? "● Telefon połączony (" + Store.linkKind + ")" : "● Telefon niepołączony");
             homeStatus.setTextColor(Store.linkKind != null ? 0xFF81C784 : 0xFFEF9A9A);
             int missed = 0;
             long dayAgo = System.currentTimeMillis() - 24L * 3600 * 1000;
@@ -1502,6 +1502,9 @@ public class MainActivity extends Activity {
         });
         col.addView(auto, Ui.lp(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, 0, this, 6));
 
+        col.addView(Ui.button(this, "📄 Zapisz diagnostykę radia (plik dla Claude)", 0xFF00695C, 18, v -> diagnose()),
+                Ui.lp(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, 0, this, 6));
+
         col.addView(Ui.button(this, "🔄 Pobierz wszystko ponownie z telefonu", 0xFF3949AB, 18, v -> sync()),
                 Ui.lp(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, 0, this, 6));
         return sv;
@@ -1527,6 +1530,42 @@ public class MainActivity extends Activity {
         } catch (Exception e) {
             return cn.getPackageName();
         }
+    }
+
+    /** Zbiera diagnostykę, zapisuje w radiu (Pobrane) i wysyła do telefonu (Pobrane w telefonie). */
+    private void diagnose() {
+        if (android.os.Build.VERSION.SDK_INT >= 23 && checkSelfPermission(
+                android.Manifest.permission.WRITE_EXTERNAL_STORAGE) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{android.Manifest.permission.WRITE_EXTERNAL_STORAGE}, 9);
+        }
+        toast("Zbieram diagnostykę… (kilka sekund)");
+        final String name = "RadioCentrum-diagnostyka-"
+                + new java.text.SimpleDateFormat("yyyyMMdd-HHmm", Locale.US).format(new java.util.Date()) + ".txt";
+        new Thread(() -> {
+            String text = Diagnostyka.build(this);
+            String where = "";
+            try {
+                java.io.File dir = android.os.Environment.getExternalStoragePublicDirectory(
+                        android.os.Environment.DIRECTORY_DOWNLOADS);
+                dir.mkdirs();
+                java.io.File f = new java.io.File(dir, name);
+                try (java.io.FileOutputStream out = new java.io.FileOutputStream(f)) {
+                    out.write(text.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                }
+                where = "w radiu: Pobrane/" + name;
+            } catch (Exception e) {
+                where = "w radiu nie udało się zapisać";
+            }
+            boolean sent = RadioService.sendToPhone(J.obj("t", "diag", "name", name, "text", text));
+            final String msg = "Diagnostyka zapisana " + where
+                    + (sent ? "\nWysyłam też do telefonu (Pobrane w telefonie)…" : "\nTelefon niepołączony – nie wysłano do telefonu");
+            runOnUiThread(() -> {
+                Okno o = new Okno(this, "📄 Diagnostyka gotowa", msg
+                        + "\n\nWyślij ten plik do Claude w czacie (spinacz → plik).");
+                o.cancel("OK");
+                o.show();
+            });
+        }, "rc-diag").start();
     }
 
     private String camLabel() {
