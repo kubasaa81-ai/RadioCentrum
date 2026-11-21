@@ -458,6 +458,46 @@ public class PhoneService extends NotificationListenerService implements Link.Ha
 
     // ------------------------------------------------------------------ pliki z radia
 
+    /** Wyślij plik (z wyboru albo z „Udostępnij”) do Pobranych w radiu. */
+    public void sendFileToRadio(final Uri uri) {
+        new Thread(() -> {
+            Link l = link;
+            if (l == null || l.isClosed()) {
+                phoneToast("Brak połączenia z radiem");
+                return;
+            }
+            String name = "plik";
+            long size = -1;
+            try (Cursor c = getContentResolver().query(uri, new String[]{
+                    android.provider.OpenableColumns.DISPLAY_NAME, android.provider.OpenableColumns.SIZE}, null, null, null)) {
+                if (c != null && c.moveToFirst()) {
+                    if (c.getString(0) != null) name = c.getString(0);
+                    size = c.getLong(1);
+                }
+            } catch (Exception ignored) {
+            }
+            name = name.replace("/", "_");
+            if (size > 60L * 1024 * 1024) {
+                phoneToast("Plik za duży (ponad 60 MB)");
+                return;
+            }
+            phoneToast("📤 Wysyłam do radia: " + name);
+            try (java.io.InputStream in = getContentResolver().openInputStream(uri)) {
+                if (in == null) throw new IOException("brak");
+                if (!l.send(J.obj("t", "file_begin", "name", name, "size", size))) throw new IOException("link");
+                byte[] buf = new byte[48 * 1024];
+                int n;
+                while ((n = in.read(buf)) > 0) {
+                    String b64 = android.util.Base64.encodeToString(buf, 0, n, android.util.Base64.NO_WRAP);
+                    if (!l.send(J.obj("t", "file_chunk", "name", name, "data", b64))) throw new IOException("link");
+                }
+                l.send(J.obj("t", "file_end", "name", name));
+            } catch (Exception e) {
+                phoneToast("Nie udało się wysłać pliku do radia");
+            }
+        }, "rc-send-file").start();
+    }
+
     public void requestFileList() {
         send(J.obj("t", "listfiles"));
     }

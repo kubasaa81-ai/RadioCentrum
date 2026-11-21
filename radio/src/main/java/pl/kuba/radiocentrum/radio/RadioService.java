@@ -346,6 +346,42 @@ public class RadioService extends Service implements Link.Handler {
         return l != null && !l.isClosed() && l.send(m);
     }
 
+    private final ExecutorService fileExec = Executors.newSingleThreadExecutor();
+    private final java.util.Map<String, java.io.OutputStream> incoming = new java.util.HashMap<>();
+
+    /** Plik z telefonu → Pobrane w radiu. */
+    private void receiveFile(JSONObject m) {
+        String name = m.optString("name").replace("/", "_");
+        try {
+            switch (m.optString("t")) {
+                case "file_begin": {
+                    java.io.File dir = downloadsDir();
+                    dir.mkdirs();
+                    java.io.File f = new java.io.File(dir, name);
+                    java.io.OutputStream old = incoming.remove(name);
+                    if (old != null) old.close();
+                    incoming.put(name, new java.io.FileOutputStream(f));
+                    break;
+                }
+                case "file_chunk": {
+                    java.io.OutputStream out = incoming.get(name);
+                    if (out != null) out.write(android.util.Base64.decode(m.optString("data"), android.util.Base64.NO_WRAP));
+                    break;
+                }
+                default: {
+                    java.io.OutputStream out = incoming.remove(name);
+                    if (out != null) out.close();
+                    final String msg = "✅ Odebrano z telefonu: Pobrane/" + name;
+                    main.post(() -> android.widget.Toast.makeText(this, msg, android.widget.Toast.LENGTH_LONG).show());
+                    sendNow(J.obj("t", "toast", "text", "✅ Plik " + name + " jest w radiu (Pobrane)"));
+                }
+            }
+        } catch (Exception e) {
+            incoming.remove(name);
+            sendNow(J.obj("t", "toast", "text", "Radio nie mogło zapisać pliku – w Radio Centrum na radiu zezwól na dostęp do plików"));
+        }
+    }
+
     private void sendFileList() {
         org.json.JSONArray arr = new org.json.JSONArray();
         java.io.File[] fs = downloadsDir().listFiles();
@@ -407,6 +443,12 @@ public class RadioService extends Service implements Link.Handler {
             case "getfile":
                 final String fname = m.optString("name");
                 new Thread(() -> sendFile(fname), "rc-file").start();
+                return;
+            case "file_begin":
+            case "file_chunk":
+            case "file_end":
+                final JSONObject fm = m;
+                fileExec.execute(() -> receiveFile(fm));
                 return;
             case "dictating":
                 MainActivity.liveDictation(m.optString("text"));

@@ -83,6 +83,7 @@ public class MainActivity extends Activity {
                 v -> safeStart(new Intent(Settings.ACTION_BLUETOOTH_SETTINGS))), lp(10));
         col.addView(button("Wyślij ponownie wszystko do radia", 0xFF3949AB, v -> resend()), lp(10));
         col.addView(button("📥 Pobierz pliki z radia (Pobrane)", 0xFF6D4C41, v -> radioFiles()), lp(10));
+        col.addView(button("📤 Wyślij plik do radia (Pobrane)", 0xFF00838F, v -> pickFileForRadio()), lp(10));
         col.addView(button("Ustawienia aplikacji (ograniczone ustawienia)", 0xFF546E7A, v -> openAppDetails()), lp(10));
 
         codeView = text("", 16, 0xFFFFD54F, false);
@@ -91,6 +92,67 @@ public class MainActivity extends Activity {
         col.addView(codeView, lp(16));
 
         setContentView(sv);
+        handleShare(getIntent());
+    }
+
+    @Override
+    protected void onNewIntent(Intent i) {
+        super.onNewIntent(i);
+        handleShare(i);
+    }
+
+    /** „Udostępnij → Radio Centrum” z galerii, Moich plików itd. */
+    @SuppressWarnings("deprecation")
+    private void handleShare(Intent i) {
+        if (i == null) return;
+        PhoneService s = PhoneService.instance;
+        java.util.List<Uri> uris = new ArrayList<>();
+        if (Intent.ACTION_SEND.equals(i.getAction())) {
+            Uri u = i.getParcelableExtra(Intent.EXTRA_STREAM);
+            if (u != null) uris.add(u);
+        } else if (Intent.ACTION_SEND_MULTIPLE.equals(i.getAction())) {
+            ArrayList<Uri> list = i.getParcelableArrayListExtra(Intent.EXTRA_STREAM);
+            if (list != null) uris.addAll(list);
+        }
+        if (uris.isEmpty()) return;
+        i.setAction(Intent.ACTION_MAIN);
+        if (s == null || !s.isConnected()) {
+            toast("Brak połączenia z radiem – nie wysłano");
+            return;
+        }
+        for (Uri u : uris) s.sendFileToRadio(u);
+    }
+
+    private void pickFileForRadio() {
+        PhoneService s = PhoneService.instance;
+        if (s == null || !s.isConnected()) {
+            toast("Brak połączenia z radiem");
+            return;
+        }
+        Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        i.addCategory(Intent.CATEGORY_OPENABLE);
+        i.setType("*/*");
+        i.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
+        try {
+            startActivityForResult(i, 77);
+        } catch (Exception e) {
+            toast("Nie udało się otworzyć wyboru plików");
+        }
+    }
+
+    @Override
+    protected void onActivityResult(int req, int res, Intent data) {
+        super.onActivityResult(req, res, data);
+        if (req != 77 || res != RESULT_OK || data == null) return;
+        PhoneService s = PhoneService.instance;
+        if (s == null) return;
+        if (data.getClipData() != null) {
+            for (int k = 0; k < data.getClipData().getItemCount(); k++) {
+                s.sendFileToRadio(data.getClipData().getItemAt(k).getUri());
+            }
+        } else if (data.getData() != null) {
+            s.sendFileToRadio(data.getData());
+        }
     }
 
     @Override
