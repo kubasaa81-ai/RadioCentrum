@@ -135,6 +135,7 @@ public class PhoneService extends NotificationListenerService implements Link.Ha
                 Link l = link;
                 if (l != null && "Bluetooth".equals(l.kind)) l.close();
                 main.removeCallbacks(yanStop);
+                yanTries = 0;
                 main.postDelayed(yanStop, 30000);
             }
         };
@@ -348,8 +349,22 @@ public class PhoneService extends NotificationListenerService implements Link.Ha
         }
     }
 
-    private final Runnable yanStop = () -> {
-        if (!isConnected()) Yanosik.stop(this, false);
+    private int yanTries;
+    /** Po rozłączeniu: próbuj wyłączyć Yanosika kilka razy (0 s, +20 s, +40 s, +60 s), aż zniknie. */
+    private final Runnable yanStop = new Runnable() {
+        @Override
+        public void run() {
+            if (isConnected()) {
+                yanTries = 0;
+                return;
+            }
+            boolean was = Yanosik.running(PhoneService.this);
+            if (was) Yanosik.stop(PhoneService.this, false);
+            else Yanosik.add("Sprawdzam Yanosika (" + (yanTries + 1) + "/4) – nie działa");
+            yanTries++;
+            if (yanTries < 4) main.postDelayed(this, 20000);
+            else yanTries = 0;
+        }
     };
 
     private void startLink(final Link l) {
@@ -389,6 +404,7 @@ public class PhoneService extends NotificationListenerService implements Link.Ha
             status = "Rozłączono – szukam radia…";
             // krótkie zerwania (np. restart radia) nie wyłączają Yanosika – dopiero po 30 s
             main.removeCallbacks(yanStop);
+            yanTries = 0;
             main.postDelayed(yanStop, 30000);
         }
     }
