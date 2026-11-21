@@ -120,6 +120,10 @@ final class Ui {
                 return 0xFFBA68C8;
             case "Fotoradar":
                 return 0xFFE53935;
+            case "Policja":
+                return 0xFF2962FF;
+            case "Uwaga":
+                return 0xFFFF6D00;
             default:
                 return 0xFFFFA726;
         }
@@ -138,6 +142,9 @@ final class Ui {
                 return "🧪";
             case "Fotoradar":
                 return "📷";
+            case "Policja":
+            case "Uwaga":
+                return "⚠";
             default:
                 return "🔔";
         }
@@ -147,6 +154,8 @@ final class Ui {
     static String appKind(String app) {
         if ("SMS".equals(app)) return "SMS";
         if ("Fotoradar".equals(app)) return "Ostrzeżenie";
+        if ("Policja".equals(app)) return "Ostrzeżenie · Yanosik";
+        if ("Uwaga".equals(app)) return "Ostrzeżenie · Yanosik";
         if ("WhatsApp".equals(app) || "Messenger".equals(app)) return "Wiadomość · " + app;
         return "Powiadomienie · " + (app == null ? "" : app);
     }

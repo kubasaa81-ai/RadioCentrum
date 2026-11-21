@@ -26,6 +26,15 @@ final class Prefs {
         p(c).edit().putString("mac", mac).putString("name", name).apply();
     }
 
+    /** Yanosik włączany razem z radiem i wyłączany po rozłączeniu. */
+    static boolean yanAuto(Context c) {
+        return p(c).getBoolean("yanAuto", true);
+    }
+
+    static void setYanAuto(Context c, boolean v) {
+        p(c).edit().putBoolean("yanAuto", v).apply();
+    }
+
     /** 6-cyfrowy kod do połączenia przez Wi-Fi (tworzony raz). */
     static String code(Context c) {
         String s = p(c).getString("code", null);

@@ -85,6 +85,13 @@ public class MainActivity extends Activity {
         col.addView(button("📥 Pobierz pliki z radia (Pobrane)", 0xFF6D4C41, v -> radioFiles()), lp(10));
         col.addView(button("📤 Wyślij plik do radia (Pobrane)", 0xFF00838F, v -> pickFileForRadio()), lp(10));
         col.addView(button("Ustawienia aplikacji (ograniczone ustawienia)", 0xFF546E7A, v -> openAppDetails()), lp(10));
+        yanButton = button("", 0xFFC62828, v -> {
+            Prefs.setYanAuto(this, !Prefs.yanAuto(this));
+            updateYanButton();
+        });
+        col.addView(yanButton, lp(10));
+        updateYanButton();
+        col.addView(button("👁 Podgląd powiadomień Yanosika", 0xFF5E35B1, v -> yanLog()), lp(10));
 
         codeView = text("", 16, 0xFFFFD54F, false);
         codeView.setPadding(p, p, p, p);
@@ -404,6 +411,35 @@ public class MainActivity extends Activity {
         };
         s.requestFileList();
         toast("Pytam radio o pliki…");
+    }
+
+    private Button yanButton;
+
+    private void updateYanButton() {
+        String y = Yanosik.pkg(this);
+        yanButton.setText(y == null ? "🚓 Yanosik: nie znalazłem go w telefonie"
+                : Prefs.yanAuto(this) ? "🚓 Yanosik z radiem: WŁĄCZONE ✔\n(włącza się po połączeniu, wyłącza po rozłączeniu)"
+                : "🚓 Yanosik z radiem: WYŁĄCZONE ✖");
+    }
+
+    /** Co Yanosik wysyła w powiadomieniach – do dopracowania rozpoznawania ostrzeżeń. */
+    private void yanLog() {
+        TextView t = text(Yanosik.logText(), 14, 0xFFE0E0E0, false);
+        t.setTextIsSelectable(true);
+        int p = dp(14);
+        t.setPadding(p, p, p, p);
+        ScrollView sv = new ScrollView(this);
+        sv.addView(t);
+        new AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                .setTitle("Yanosik – ostatnie powiadomienia")
+                .setView(sv)
+                .setPositiveButton("Zamknij", null)
+                .setNeutralButton("Kopiuj", (d, w) -> {
+                    android.content.ClipboardManager cm = (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+                    if (cm != null) cm.setPrimaryClip(android.content.ClipData.newPlainText("Yanosik", Yanosik.logText()));
+                    toast("Skopiowano – możesz wkleić w czacie");
+                })
+                .show();
     }
 
     private void safeStart(Intent i) {

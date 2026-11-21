@@ -919,7 +919,7 @@ public class MainActivity extends Activity {
         left.addView(date);
 
         // dane jazdy zamiast rysunku auta
-        String[] labels = {"Prędkość", "Kierunek", "Wysokość", "Dystans trasy", "Czas jazdy", "Średnia",
+        String[] labels = {"Prędkość", "Kierunek", "Temperatura", "Dystans trasy", "Czas jazdy", "Średnia",
                 "Maks.", "Światła", "Telefon"};
         dataVals = new TextView[labels.length];
         LinearLayout gridData = new LinearLayout(this);
@@ -945,6 +945,13 @@ public class MainActivity extends Activity {
                 Ui.autoSize(val, 11, 24);
                 tile.addView(val, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
                 dataVals[idx] = val;
+                if (idx == 2) {
+                    tile.setOnLongClickListener(v -> {
+                        Pogoda.refresh();
+                        toast(Pogoda.info());
+                        return true;
+                    });
+                }
                 if (idx == 3) {
                     tile.setOnLongClickListener(v -> {
                         Fotoradary.resetTrip();
@@ -1413,8 +1420,10 @@ public class MainActivity extends Activity {
         dataVals[0].setText(gps ? Fotoradary.speedKmh + " km/h" : "brak GPS");
         float b = Fotoradary.bearing;
         dataVals[1].setText(b < 0 ? "–" : "➤ " + DIRS[Math.round(b / 45f) % 8]);
-        double alt = Fotoradary.altitude;
-        dataVals[2].setText(Double.isNaN(alt) ? "–" : Math.round(alt) + " m");
+        Pogoda.tick(this);
+        dataVals[2].setText(Pogoda.text());
+        double tc = Pogoda.tempC;
+        dataVals[2].setTextColor(Double.isNaN(tc) ? Ui.WHITE : tc <= 3 ? 0xFF81D4FA : tc >= 28 ? 0xFFFFAB40 : Ui.WHITE);
         double km = Fotoradary.tripM / 1000.0;
         dataVals[3].setText(km < 10 ? String.format(Locale.US, "%.1f km", km) : Math.round(km) + " km");
         long min = Fotoradary.movingMs / 60000;
@@ -1912,7 +1921,7 @@ public class MainActivity extends Activity {
                 + "\n" + RadioService.wifiInfo
                 + "\nZapisany kod Wi-Fi: " + (Prefs.code(this).isEmpty() ? "brak" : Prefs.code(this))
                 + "\n" + LightSensor.info(this)
-                + "\n" + Fotoradary.info
+                + "\n" + Fotoradary.info + "\n" + Pogoda.info()
                 + "\nKontakty w radiu: " + Store.contacts.size()
                 + "   Historia połączeń: " + Store.calls.size();
     }

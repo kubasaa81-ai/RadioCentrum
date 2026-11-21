@@ -325,6 +325,10 @@ public class PhoneService extends NotificationListenerService implements Link.Ha
         }
     }
 
+    private final Runnable yanStop = () -> {
+        if (!isConnected()) Yanosik.stop(this);
+    };
+
     private void startLink(final Link l) {
         synchronized (this) {
             if (isConnected()) {
@@ -333,6 +337,11 @@ public class PhoneService extends NotificationListenerService implements Link.Ha
             }
             link = l;
         }
+        main.removeCallbacks(yanStop);
+        main.postDelayed(() -> {
+            String msg = Yanosik.start(this);
+            if (msg != null) send(J.obj("t", "toast", "text", msg));
+        }, 3000);
         status = "Połączono z radiem (" + l.kind + ")";
         new Thread(() -> l.runReader(this), "rc-read").start();
         sendExec.execute(() -> {
@@ -353,7 +362,12 @@ public class PhoneService extends NotificationListenerService implements Link.Ha
         synchronized (this) {
             if (link == l) link = null;
         }
-        if (running && !isConnected()) status = "Rozłączono – szukam radia…";
+        if (running && !isConnected()) {
+            status = "Rozłączono – szukam radia…";
+            // krótkie zerwania (np. restart radia) nie wyłączają Yanosika – dopiero po 45 s
+            main.removeCallbacks(yanStop);
+            main.postDelayed(yanStop, 45000);
+        }
     }
 
     @Override
@@ -403,6 +417,10 @@ public class PhoneService extends NotificationListenerService implements Link.Ha
             case "file_end":
                 fileEnd(m.optString("name"), m.optString("err", null));
                 break;
+            case "weather":
+                final double wLat = m.optDouble("lat"), wLon = m.optDouble("lon");
+                new Thread(() -> sendWeather(wLat, wLon), "rc-weather").start();
+                break;
             case "dictate":
                 main.post(this::startDictation);
                 break;
@@ -413,6 +431,30 @@ public class PhoneService extends NotificationListenerService implements Link.Ha
                 break;
             default:
                 break;
+        }
+    }
+
+    /** Temperatura na zewnątrz (Open-Meteo, bez klucza) dla miejsca, w którym jest radio. */
+    private void sendWeather(double lat, double lon) {
+        if (Double.isNaN(lat) || Double.isNaN(lon)) return;
+        try {
+            java.net.URL u = new java.net.URL(String.format(Locale.US,
+                    "https://api.open-meteo.com/v1/forecast?latitude=%.4f&longitude=%.4f&current=temperature_2m", lat, lon));
+            java.net.HttpURLConnection con = (java.net.HttpURLConnection) u.openConnection();
+            con.setConnectTimeout(10000);
+            con.setReadTimeout(10000);
+            java.io.ByteArrayOutputStream bo = new java.io.ByteArrayOutputStream();
+            try (java.io.InputStream in = con.getInputStream()) {
+                byte[] buf = new byte[4096];
+                int n;
+                while ((n = in.read(buf)) > 0) bo.write(buf, 0, n);
+            }
+            JSONObject cur = new JSONObject(new String(bo.toByteArray(), java.nio.charset.StandardCharsets.UTF_8))
+                    .optJSONObject("current");
+            if (cur != null && cur.has("temperature_2m")) {
+                send(J.obj("t", "temp", "c", cur.optDouble("temperature_2m")));
+            }
+        } catch (Exception ignored) {
         }
     }
 
@@ -803,6 +845,15 @@ public class PhoneService extends NotificationListenerService implements Link.Ha
 
     @Override
     public void onNotificationPosted(StatusBarNotification sbn) {
+        if (Yanosik.isYanosik(this, sbn.getPackageName())) {
+            JSONObject a = null;
+            try {
+                a = Yanosik.alert(sbn);
+            } catch (Exception ignored) {
+            }
+            if (a != null && isConnected()) send(a);
+            return; // Yanosik nie trafia na listę zwykłych powiadomień
+        }
         if (!isConnected()) return;
         JSONObject j = notifJson(sbn, false);
         if (j != null) send(j);
@@ -819,6 +870,7 @@ public class PhoneService extends NotificationListenerService implements Link.Ha
         try {
             String pkg = sbn.getPackageName();
             if (pkg.equals(getPackageName())) return null;
+            if (Yanosik.isYanosik(this, pkg)) return null;
             if (sbn.isOngoing()) return null;
             Notification n = sbn.getNotification();
             if ((n.flags & Notification.FLAG_GROUP_SUMMARY) != 0) return null;

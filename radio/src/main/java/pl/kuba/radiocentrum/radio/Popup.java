@@ -101,7 +101,7 @@ final class Popup {
         }
         final String key = m.optString("key");
         final String speech = speech(m);
-        final boolean isCam = "Fotoradar".equals(appName);
+        final boolean isCam = "Fotoradar".equals(appName) || "Policja".equals(appName) || "Uwaga".equals(appName);
         LinearLayout row = new LinearLayout(app);
         row.setOrientation(LinearLayout.HORIZONTAL);
         if (!isCam) row.addView(Ui.buttonFit(app, "🔊 Przeczytaj", Ui.BLUE, 18, v -> {

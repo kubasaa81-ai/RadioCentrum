@@ -420,6 +420,42 @@ public class RadioService extends Service implements Link.Handler {
         }
     }
 
+    /** Ostrzeżenie z Yanosika: duże okno, sygnał i głos. */
+    private void alert(JSONObject m) {
+        String kind = m.optString("kind");
+        String title = m.optString("title");
+        String text = m.optString("text");
+        String app, head, say;
+        switch (kind) {
+            case "police":
+                app = "Policja";
+                head = "⚠ UWAGA POLICJA";
+                say = "Uwaga, policja.";
+                break;
+            case "cam":
+                app = "Fotoradar";
+                head = "📷 UWAGA FOTORADAR";
+                say = "Uwaga, fotoradar.";
+                break;
+            default:
+                app = "Uwaga";
+                head = "⚠ UWAGA NA DRODZE";
+                say = "Uwaga.";
+                break;
+        }
+        String body = (title + (text.isEmpty() ? "" : " · " + text)).trim();
+        if (body.startsWith("·")) body = body.substring(1).trim();
+        Popup.showNotif(this, J.obj("t", "notif", "key", "yan", "app", app, "title", head, "text", body));
+        try {
+            final android.media.ToneGenerator tg = new android.media.ToneGenerator(android.media.AudioManager.STREAM_MUSIC, 100);
+            tg.startTone(android.media.ToneGenerator.TONE_CDMA_ALERT_CALL_GUARD, 900);
+            main.postDelayed(tg::release, 1500);
+        } catch (Exception ignored) {
+        }
+        final String speech = say + " " + body;
+        main.postDelayed(() -> Mowa.speak(this, speech), 1000);
+    }
+
     private void handle(JSONObject m) {
         switch (m.optString("t")) {
             case "hello":
@@ -459,6 +495,12 @@ public class RadioService extends Service implements Link.Handler {
                 return;
             case "dictated":
                 MainActivity.deliverDictation(this, m.optString("text"), m.optString("err"));
+                return;
+            case "temp":
+                Pogoda.fromPhone(m.optDouble("c"));
+                return;
+            case "alert":
+                alert(m);
                 return;
             case "cams":
                 Fotoradary.setAll(this, m.optJSONArray("list"));
