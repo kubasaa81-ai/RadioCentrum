@@ -98,6 +98,15 @@ public class RadioService extends Service implements Link.Handler {
         startForeground(1, buildNotification());
         Store.load(this);
         Mowa.init(this);
+        Fotoradary.start(this);
+        main.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                if (!running) return;
+                Fotoradary.start(RadioService.this); // gdy zgoda na lokalizację przyjdzie później
+                if (!Fotoradary.started()) main.postDelayed(this, 15000);
+            }
+        }, 15000);
         new Thread(this::btLoop, "rc-bt").start();
         new Thread(this::wifiLoop, "rc-wifi").start();
         new Thread(this::beaconLoop, "rc-beacon").start();

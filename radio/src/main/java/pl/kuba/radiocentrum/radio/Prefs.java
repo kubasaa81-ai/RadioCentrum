@@ -52,6 +52,14 @@ final class Prefs {
         c.getSharedPreferences("rc", Context.MODE_PRIVATE).edit().putStringSet("favs", s).apply();
     }
 
+    static boolean camAlerts(Context c) {
+        return c.getSharedPreferences("rc", Context.MODE_PRIVATE).getBoolean("camAlerts", true);
+    }
+
+    static void setCamAlerts(Context c, boolean v) {
+        c.getSharedPreferences("rc", Context.MODE_PRIVATE).edit().putBoolean("camAlerts", v).apply();
+    }
+
     static void setCode(Context c, String code) {
         c.getSharedPreferences("rc", Context.MODE_PRIVATE).edit().putString("code", code).apply();
     }

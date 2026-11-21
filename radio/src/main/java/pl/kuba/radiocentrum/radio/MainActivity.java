@@ -71,6 +71,7 @@ public class MainActivity extends Activity {
     private CarView carView;
     private android.webkit.WebView mapView;
     private android.location.LocationListener locListener;
+    private int shownCams = -1;
     private TextView carText, homeStatus, homeLast;
     private final Runnable lightPoll = new Runnable() {
         @Override
@@ -216,6 +217,7 @@ public class MainActivity extends Activity {
         carView = null;
         carText = homeStatus = homeLast = null;
         stopLocation();
+        shownCams = -1;
         if (mapView != null) {
             try {
                 mapView.destroy();
@@ -1142,6 +1144,14 @@ public class MainActivity extends Activity {
             + "function pos(a,b){me.setLatLng([a,b]);if(!map.hasLayer(me))me.addTo(map);"
             + "if(follow)map.setView([a,b],map.getZoom()<14?16:map.getZoom());}"
             + "function center(){follow=true;var p=me.getLatLng();if(p.lat)map.setView(p,16);}"
+            + "var camL=L.layerGroup().addTo(map);"
+            + "function cams(a){camL.clearLayers();a.forEach(function(c){"
+            + "L.circleMarker([c[0],c[1]],{radius:9,color:'#fff',weight:2,fillColor:'#E53935',fillOpacity:1})"
+            + ".bindTooltip('Fotoradar'+(c[2]>0?' '+c[2]+' km/h':'')).addTo(camL);});}"
+            + "var sp=L.control({position:'topleft'});sp.onAdd=function(){var d=L.DomUtil.create('div');d.id='sp';"
+            + "d.style.cssText='background:#1b2430;color:#fff;font:bold 28px sans-serif;padding:6px 14px;"
+            + "border-radius:16px;border:3px solid #43A047';d.innerHTML='0 km/h';return d;};sp.addTo(map);"
+            + "function spd(v){var d=document.getElementById('sp');if(d)d.innerHTML=v+' km/h';}"
             + "</script></body></html>";
 
     @android.annotation.SuppressLint("MissingPermission")
@@ -1158,6 +1168,12 @@ public class MainActivity extends Activity {
             public void onLocationChanged(android.location.Location l) {
                 if (mapView != null) {
                     mapView.evaluateJavascript("pos(" + l.getLatitude() + "," + l.getLongitude() + ")", null);
+                    int kmh = l.hasSpeed() ? Math.round(l.getSpeed() * 3.6f) : 0;
+                    mapView.evaluateJavascript("spd(" + kmh + ")", null);
+                    if (shownCams != Fotoradary.version) {
+                        shownCams = Fotoradary.version;
+                        mapView.evaluateJavascript("cams(" + Fotoradary.json() + ")", null);
+                    }
                 }
             }
 
@@ -1438,6 +1454,13 @@ public class MainActivity extends Activity {
         }), Ui.lp(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1, this, 6));
         col.addView(rv);
 
+        final Button cam = Ui.button(this, camLabel(), 0xFFC62828, 18, null);
+        cam.setOnClickListener(v -> {
+            Prefs.setCamAlerts(this, !Prefs.camAlerts(this));
+            cam.setText(camLabel());
+        });
+        col.addView(cam, Ui.lp(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, 0, this, 6));
+
         final Button auto = Ui.button(this, autoLabel(), Ui.ORANGE, 18, null);
         auto.setOnClickListener(v -> {
             Prefs.setAutoRead(this, !Prefs.autoRead(this));
@@ -1454,6 +1477,10 @@ public class MainActivity extends Activity {
         return "🗣 Kto czyta: " + Mowa.MODES[Prefs.voiceMode(this)] + "  (kliknij, by zmienić)";
     }
 
+    private String camLabel() {
+        return "📷 Ostrzeżenia o fotoradarach: " + (Prefs.camAlerts(this) ? "WŁĄCZONE" : "wyłączone");
+    }
+
     private String autoLabel() {
         return "🔊 Czytaj nowe wiadomości automatycznie: " + (Prefs.autoRead(this) ? "WŁĄCZONE" : "wyłączone");
     }
@@ -1466,6 +1493,7 @@ public class MainActivity extends Activity {
                 + "\n" + RadioService.wifiInfo
                 + "\nZapisany kod Wi-Fi: " + (Prefs.code(this).isEmpty() ? "brak" : Prefs.code(this))
                 + "\n" + LightSensor.info(this)
+                + "\n" + Fotoradary.info
                 + "\nKontakty w radiu: " + Store.contacts.size()
                 + "   Historia połączeń: " + Store.calls.size();
     }

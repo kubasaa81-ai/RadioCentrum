@@ -101,9 +101,10 @@ final class Popup {
         }
         final String key = m.optString("key");
         final String speech = speech(m);
+        final boolean isCam = "Fotoradar".equals(appName);
         LinearLayout row = new LinearLayout(app);
         row.setOrientation(LinearLayout.HORIZONTAL);
-        row.addView(Ui.buttonFit(app, "🔊 Przeczytaj", Ui.BLUE, 18, v -> {
+        if (!isCam) row.addView(Ui.buttonFit(app, "🔊 Przeczytaj", Ui.BLUE, 18, v -> {
             if (!Mowa.speak(app, speech)) {
                 android.widget.Toast.makeText(app, "Brak połączenia z telefonem", android.widget.Toast.LENGTH_SHORT).show();
             }
@@ -127,6 +128,7 @@ final class Popup {
         card.addView(row, rp);
         card.setOnClickListener(v -> {
             hideNotif();
+            if (isCam) return;
             Intent i = new Intent(app, MainActivity.class);
             i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             i.putExtra(MainActivity.EXTRA_OPEN, key);

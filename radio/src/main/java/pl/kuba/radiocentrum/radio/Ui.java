@@ -118,6 +118,8 @@ final class Ui {
                 return 0xFF448AFF;
             case "Test":
                 return 0xFFBA68C8;
+            case "Fotoradar":
+                return 0xFFE53935;
             default:
                 return 0xFFFFA726;
         }
@@ -134,6 +136,8 @@ final class Ui {
                 return "💬";
             case "Test":
                 return "🧪";
+            case "Fotoradar":
+                return "📷";
             default:
                 return "🔔";
         }
@@ -142,6 +146,7 @@ final class Ui {
     /** Opis rodzaju: „SMS” albo „Powiadomienie · Gmail”. */
     static String appKind(String app) {
         if ("SMS".equals(app)) return "SMS";
+        if ("Fotoradar".equals(app)) return "Ostrzeżenie";
         if ("WhatsApp".equals(app) || "Messenger".equals(app)) return "Wiadomość · " + app;
         return "Powiadomienie · " + (app == null ? "" : app);
     }
