@@ -108,6 +108,11 @@ final class AccWatch {
                     String name = c.getString(0).toLowerCase(Locale.ROOT);
                     if (name.contains("brightness_float") || name.equals("next_alarm_formatted")) continue;
                     if (n++ < 6) log("ustawienie " + k + ": " + old + " → " + v);
+                    if (k.equals("system:hasaccoff")) {
+                        // ustawiane od razu po wyjęciu kluczyka (uśpienie radia jest dopiero ok. 44 s później)
+                        if ("1".equals(v)) off("wyjęty kluczyk – hasaccoff=1");
+                        else if ("0".equals(v)) on("kluczyk – hasaccoff=0");
+                    }
                     if (k.equals("global:airplane_mode_on")) {
                         // radio włącza tryb samolotowy przy zgaszeniu zapłonu
                         if ("1".equals(v)) off("tryb samolotowy");
