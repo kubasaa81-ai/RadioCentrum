@@ -459,6 +459,9 @@ public class PhoneService extends NotificationListenerService implements Link.Ha
             case "file_end":
                 fileEnd(m.optString("name"), m.optString("err", null));
                 break;
+            case "rlog":
+                Yanosik.add(m.optString("text"));
+                break;
             case "car_off":
                 carOff = true;
                 Yanosik.add("Radio zgasło (wyłączony zapłon) – zamykam Yanosika");
