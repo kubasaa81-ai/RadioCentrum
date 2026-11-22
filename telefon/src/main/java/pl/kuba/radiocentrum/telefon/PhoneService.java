@@ -132,6 +132,7 @@ public class PhoneService extends NotificationListenerService implements Link.Ha
                 String mac = Prefs.radioMac(PhoneService.this);
                 if (d == null || mac == null || !mac.equalsIgnoreCase(d.getAddress())) return;
                 Yanosik.add("Bluetooth radia rozłączony (wyłączone auto)");
+                if (carOff) return; // zamykanie już trwa
                 Link l = link;
                 if (l != null && "Bluetooth".equals(l.kind)) l.close();
                 main.removeCallbacks(yanStop);
@@ -465,10 +466,17 @@ public class PhoneService extends NotificationListenerService implements Link.Ha
             case "car_off":
                 carOff = true;
                 Yanosik.add("Radio zgasło (wyłączony zapłon) – zamykam Yanosika");
+                try {
+                    // telefon w kieszeni usypia – na 2 minuty nie pozwól mu zasnąć, żeby zdążyć
+                    android.os.PowerManager pm = (android.os.PowerManager) getSystemService(POWER_SERVICE);
+                    android.os.PowerManager.WakeLock wl = pm.newWakeLock(android.os.PowerManager.PARTIAL_WAKE_LOCK, "rc:yanosik");
+                    wl.acquire(120000);
+                } catch (Exception ignored) {
+                }
                 main.post(() -> {
                     main.removeCallbacks(yanStop);
                     yanTries = 0;
-                    main.postDelayed(yanStop, 2000);
+                    yanStop.run();
                 });
                 break;
             case "car_on":
