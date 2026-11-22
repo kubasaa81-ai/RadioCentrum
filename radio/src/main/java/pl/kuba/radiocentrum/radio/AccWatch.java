@@ -113,7 +113,7 @@ final class AccWatch {
                         if ("1".equals(v)) off("tryb samolotowy");
                         else on("tryb samolotowy wyłączony");
                     }
-                    if (name.contains("acc") && !name.contains("access") && !name.contains("accel")
+                    if (name.contains("acc") && !name.contains("hasacc") && !name.contains("access") && !name.contains("accel")
                             && !name.contains("account")) {
                         String lv = v.toLowerCase(Locale.ROOT);
                         if (lv.equals("0") || lv.equals("false") || lv.equals("off")) off("ustawienie " + k + "=" + v);
