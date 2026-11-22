@@ -1816,6 +1816,12 @@ public class MainActivity extends Activity {
             Prefs.setAaDelay(this, next);
             aaD.setText(aaDelayLabel());
         });
+        final Button fmT = Ui.button(this, fmLabel(), 0xFFE65100, 18, null);
+        fmT.setOnClickListener(v -> {
+            Prefs.setFmAuto(this, !Prefs.fmAuto(this));
+            fmT.setText(fmLabel());
+        });
+        col.addView(fmT);
         LinearLayout ra = new LinearLayout(this);
         ra.setOrientation(LinearLayout.HORIZONTAL);
         ra.addView(aaT, Ui.lp(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1, this, 6));
@@ -1863,6 +1869,12 @@ public class MainActivity extends Activity {
         android.content.ComponentName cn = AutoStart.aaApp(this);
         return "🚀 Po starcie radia uruchom Android Auto" + (cn != null ? " (" + appName(cn) + ")" : "")
                 + ": " + (Prefs.aaAuto(this) ? "WŁĄCZONE" : "wyłączone");
+    }
+
+    private String fmLabel() {
+        android.content.ComponentName cn = AutoStart.radioApp(this);
+        return "📻 Po starcie włącz radio w tle" + (cn != null ? " (" + appName(cn) + ")" : "")
+                + ", potem Pulpit: " + (Prefs.fmAuto(this) ? "WŁĄCZONE" : "wyłączone");
     }
 
     private String aaDelayLabel() {

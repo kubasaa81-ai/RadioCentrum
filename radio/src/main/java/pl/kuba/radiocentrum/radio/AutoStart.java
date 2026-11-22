@@ -69,19 +69,73 @@ final class AutoStart {
         }
     }
 
-    /** Wywoływane po starcie i po wybudzeniu radia (najwyżej raz na 5 minut). */
+    static final String[] FM_WORDS = {"fmradio", "localradio", "radio", "fm", "tuner"};
+
+    /** Aplikacja radia FM: wybrana w Ustawieniach albo wykryta. */
+    static ComponentName radioApp(Context c) {
+        String f = c.getSharedPreferences("rc", Context.MODE_PRIVATE).getString("role_radio", null);
+        if (f != null) {
+            ComponentName cn = ComponentName.unflattenFromString(f);
+            if (cn != null) return cn;
+        }
+        PackageManager pm = c.getPackageManager();
+        Intent i = new Intent(Intent.ACTION_MAIN);
+        i.addCategory(Intent.CATEGORY_LAUNCHER);
+        for (String w : FM_WORDS) {
+            for (ResolveInfo ri : pm.queryIntentActivities(i, 0)) {
+                if (ri.activityInfo == null) continue;
+                String pkg = ri.activityInfo.packageName;
+                if (pkg.equals(c.getPackageName())) continue; // nie my (Radio Centrum)
+                String t = (ri.loadLabel(pm) + " " + pkg).toLowerCase(Locale.ROOT);
+                if (t.contains(w)) return new ComponentName(pkg, ri.activityInfo.name);
+            }
+        }
+        return null;
+    }
+
+    static boolean launch(Context c, ComponentName cn) {
+        if (cn == null) return false;
+        try {
+            Intent i = new Intent(Intent.ACTION_MAIN);
+            i.addCategory(Intent.CATEGORY_LAUNCHER);
+            i.setComponent(cn);
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED
+                    | Intent.FLAG_ACTIVITY_NO_ANIMATION);
+            c.startActivity(i);
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /**
+     * Po starcie / wybudzeniu radia: radio FM w tle, ewentualnie Android Auto, na końcu zawsze Pulpit.
+     * Pulpit jest pokazywany kilka razy, bo radio samo potrafi przywrócić ostatnią aplikację (np. Mapy).
+     */
     static void run(Context c) {
         final Context app = c.getApplicationContext();
-        if (!Prefs.aaAuto(app)) return;
         long now = SystemClock.elapsedRealtime();
-        if (lastRun != 0 && now - lastRun < 5 * 60 * 1000) return;
+        if (lastRun != 0 && now - lastRun < 60 * 1000) return;
         lastRun = now;
-        // chwila, żeby radio i ZLink zdążyły wstać
-        h.postDelayed(() -> {
-            if (!launchAA(app)) return;
+        h.removeCallbacksAndMessages(null);
+        backToPulpit(app);
+        long t = 3000;
+        if (Prefs.fmAuto(app)) {
+            h.postDelayed(() -> launch(app, radioApp(app)), t);
+            t += 2500;
+        }
+        long pulpitAt;
+        if (Prefs.aaAuto(app) && aaApp(app) != null) {
+            h.postDelayed(() -> launchAA(app), t);
             int d = Prefs.aaDelay(app);
-            if (d > 0) h.postDelayed(() -> backToPulpit(app), d * 1000L);
-        }, 4000);
+            if (d == 0) return; // zostań w Android Auto
+            pulpitAt = t + d * 1000L;
+        } else {
+            pulpitAt = t;
+        }
+        h.postDelayed(() -> backToPulpit(app), pulpitAt);
+        h.postDelayed(() -> backToPulpit(app), pulpitAt + 6000);
+        h.postDelayed(() -> backToPulpit(app), pulpitAt + 15000);
     }
 
     static String delayLabel(int d) {

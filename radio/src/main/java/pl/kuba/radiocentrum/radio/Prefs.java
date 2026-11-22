@@ -68,6 +68,15 @@ final class Prefs {
         c.getSharedPreferences("rc", Context.MODE_PRIVATE).edit().putBoolean("aaAuto", v).apply();
     }
 
+    /** Po starcie radia włącz w tle radio FM. */
+    static boolean fmAuto(Context c) {
+        return c.getSharedPreferences("rc", Context.MODE_PRIVATE).getBoolean("fmAuto", true);
+    }
+
+    static void setFmAuto(Context c, boolean v) {
+        c.getSharedPreferences("rc", Context.MODE_PRIVATE).edit().putBoolean("fmAuto", v).apply();
+    }
+
     static int aaDelay(Context c) {
         return c.getSharedPreferences("rc", Context.MODE_PRIVATE).getInt("aaDelay", 25);
     }

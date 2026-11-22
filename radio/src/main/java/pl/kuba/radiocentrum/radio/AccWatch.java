@@ -138,6 +138,8 @@ final class AccWatch {
         if (now - lastOn < 20000) return;
         lastOn = now;
         log("➡ WŁĄCZENIE (" + why + ")");
+        RadioService rs = RadioService.instance;
+        if (rs != null) AutoStart.run(rs);
         RadioService.sendToPhone(J.obj("t", "car_on"));
     }
 
