@@ -48,14 +48,22 @@ final class AccWatch {
     };
 
     private static final Map<String, String> snap = new HashMap<>();
-    private static long lastOff, lastOn;
-    /** Po zgaszeniu – czekamy na zapalenie (radio go nie zgłasza, gdy nie zdążyło zasnąć). */
-    private static volatile boolean waitOn;
+    /** null = nie wiadomo, true = auto zapalone, false = zgaszone. */
+    private static volatile Boolean carOn;
+    /** Ostatnie „zgaszenie” wynikało ze zgaszenia świateł (wtedy GPS nie włącza z powrotem). */
+    private static volatile boolean lampOff;
     private static int fastCount;
+    private static Handler lampH;
+    /** Światła: reaguj dopiero, gdy stan utrzyma się 3 s (przy kluczyku sygnał chwilę „mruga”). */
+    private static final Runnable lampCheck = () -> {
+        String v = snap.get("system:Headlamp");
+        if ("1".equals(v)) on("światła włączone");
+        else if ("0".equals(v)) off("światła wyłączone");
+    };
 
-    /** Prędkość z GPS: jeśli po „zgaszeniu” auto jedzie, to znaczy, że zapalone. */
+    /** Prędkość z GPS: jeśli po zgaszeniu (kluczykiem) auto jedzie, to znaczy, że zapalone. */
     static void onSpeed(int kmh) {
-        if (!waitOn) return;
+        if (!Boolean.FALSE.equals(carOn) || lampOff) return;
         fastCount = kmh >= 8 ? fastCount + 1 : 0;
         if (fastCount >= 2) on("jazda – GPS " + kmh + " km/h");
     }
@@ -80,6 +88,7 @@ final class AccWatch {
 
         // zmiany w ustawieniach systemu (moduł CAN/MCU często zapisuje tam stan ACC)
         Handler h = new Handler(Looper.getMainLooper());
+        lampH = h;
         final ContentResolver cr = s.getContentResolver();
         takeSnap(cr, "system");
         takeSnap(cr, "global");
@@ -121,10 +130,9 @@ final class AccWatch {
                     String name = c.getString(0).toLowerCase(Locale.ROOT);
                     if (name.contains("brightness_float") || name.equals("next_alarm_formatted")) continue;
                     if (n++ < 6) log("ustawienie " + k + ": " + old + " → " + v);
-                    if (k.equals("system:Headlamp") && "1".equals(v) && waitOn
-                            && System.currentTimeMillis() - lastOff > 3000) {
-                        // przy włożeniu kluczyka moduł CAN znowu zgłasza światła
-                        on("kluczyk – CAN Headlamp=1");
+                    if (k.equals("system:Headlamp") && lampH != null) {
+                        lampH.removeCallbacks(lampCheck);
+                        lampH.postDelayed(lampCheck, 3000);
                     }
                     if (k.equals("system:hasaccoff")) {
                         // ustawiane od razu po wyjęciu kluczyka (uśpienie radia jest dopiero ok. 44 s później)
@@ -149,23 +157,22 @@ final class AccWatch {
     }
 
     private static void off(String why) {
-        long now = System.currentTimeMillis();
-        if (now - lastOff < 20000) return;
-        lastOff = now;
-        waitOn = true;
+        if (Boolean.FALSE.equals(carOn)) return; // już zgaszone – nie powtarzaj
+        carOn = false;
+        lampOff = why.startsWith("światła");
         fastCount = 0;
         log("➡ ZGASZENIE (" + why + ") – zamykam Yanosika");
         RadioService.sendToPhone(J.obj("t", "car_off"));
     }
 
     private static void on(String why) {
-        long now = System.currentTimeMillis();
-        if (now - lastOn < 20000) return;
-        lastOn = now;
-        waitOn = false;
-        log("➡ WŁĄCZENIE (" + why + ")");
+        if (Boolean.TRUE.equals(carOn)) return; // już zapalone
+        carOn = true;
+        lampOff = false;
+        log("➡ WŁĄCZENIE (" + why + ") – włączam Yanosika");
         RadioService rs = RadioService.instance;
-        if (rs != null && !why.startsWith("jazda")) AutoStart.run(rs); // w trakcie jazdy nie przełączaj ekranu
+        // ekran przełączaj tylko przy wybudzeniu radia, nie w trakcie jazdy
+        if (rs != null && !why.startsWith("jazda") && !why.startsWith("światła")) AutoStart.run(rs);
         RadioService.sendToPhone(J.obj("t", "car_on"));
     }
 
