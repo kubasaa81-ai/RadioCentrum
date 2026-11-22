@@ -86,6 +86,7 @@ public class PhoneService extends NotificationListenerService implements Link.Ha
     private BroadcastReceiver phoneReceiver;
     private BroadcastReceiver batReceiver;
     private BroadcastReceiver aclReceiver;
+    private Thread btThread;
     private int lastBat = -2;
     private boolean lastChg;
 
@@ -114,7 +115,8 @@ public class PhoneService extends NotificationListenerService implements Link.Ha
         running = true;
         main = new Handler(Looper.getMainLooper());
         status = "Szukam radia…";
-        new Thread(this::bluetoothLoop, "rc-bt").start();
+        btThread = new Thread(this::bluetoothLoop, "rc-bt");
+        btThread.start();
         new Thread(this::wifiLoop, "rc-wifi").start();
         new Thread(this::beaconLoop, "rc-beacon").start();
         registerPhoneReceiver();
@@ -131,6 +133,17 @@ public class PhoneService extends NotificationListenerService implements Link.Ha
                 BluetoothDevice d = i.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
                 String mac = Prefs.radioMac(PhoneService.this);
                 if (d == null || mac == null || !mac.equalsIgnoreCase(d.getAddress())) return;
+                if (BluetoothDevice.ACTION_ACL_CONNECTED.equals(i.getAction())) {
+                    // auto zapalone – Bluetooth radia wstał: od razu Yanosik i od razu łącz się z radiem
+                    carOff = false;
+                    main.removeCallbacks(yanStop);
+                    yanTries = 0;
+                    Yanosik.add("Bluetooth radia połączony (zapalone auto)");
+                    if (!Yanosik.running(PhoneService.this)) Yanosik.start(PhoneService.this);
+                    Thread t = btThread;
+                    if (t != null) t.interrupt();
+                    return;
+                }
                 Yanosik.add("Bluetooth radia rozłączony (wyłączone auto)");
                 if (carOff) return; // zamykanie już trwa
                 Link l = link;
@@ -141,6 +154,7 @@ public class PhoneService extends NotificationListenerService implements Link.Ha
             }
         };
         IntentFilter af = new IntentFilter(BluetoothDevice.ACTION_ACL_DISCONNECTED);
+        af.addAction(BluetoothDevice.ACTION_ACL_CONNECTED);
         if (Build.VERSION.SDK_INT >= 33) registerReceiver(aclReceiver, af, Context.RECEIVER_EXPORTED);
         else registerReceiver(aclReceiver, af);
         try {
@@ -381,9 +395,10 @@ public class PhoneService extends NotificationListenerService implements Link.Ha
         main.removeCallbacks(yanStop);
         carOff = false;
         main.postDelayed(() -> {
+            if (Yanosik.running(this)) return;
             String msg = Yanosik.start(this);
             if (msg != null) send(J.obj("t", "toast", "text", msg));
-        }, 3000);
+        }, 500);
         status = "Połączono z radiem (" + l.kind + ")";
         new Thread(() -> l.runReader(this), "rc-read").start();
         sendExec.execute(() -> {
