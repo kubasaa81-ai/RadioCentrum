@@ -31,6 +31,7 @@ jobs:
           mkdir out
           cp radio/build/outputs/apk/debug/radio-debug.apk out/RADIO-RadioCentrum.apk
           cp telefon/build/outputs/apk/debug/telefon-debug.apk out/TELEFON-RadioCentrum.apk
+          cp koniec/build/outputs/apk/debug/koniec-debug.apk out/TELEFON-KoniecJazdy.apk
 
       - uses: actions/upload-artifact@v4
         with:

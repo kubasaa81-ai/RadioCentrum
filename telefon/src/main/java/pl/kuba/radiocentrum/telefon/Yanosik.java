@@ -166,6 +166,24 @@ final class Yanosik {
         return res;
     }
 
+    /** Otwiera na chwilę aplikację „Koniec jazdy” – uruchamia procedurę Samsunga, która zamyka Yanosika. */
+    static String koniec(Context c) {
+        try {
+            Intent i = c.getPackageManager().getLaunchIntentForPackage("pl.kuba.radiocentrum.koniec");
+            if (i == null) {
+                add("Brak aplikacji „Koniec jazdy” – zainstaluj ją, żeby procedura Samsunga mogła zamykać Yanosika");
+                return "Zainstaluj aplikację „Koniec jazdy”";
+            }
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_NO_ANIMATION);
+            c.startActivity(i);
+            add("Otwieram „Koniec jazdy” (procedura Samsunga zamknie Yanosika)");
+            return "Otworzono „Koniec jazdy”";
+        } catch (Exception e) {
+            add("Nie udało się otworzyć „Koniec jazdy”: " + e.getMessage());
+            return "Błąd: " + e.getMessage();
+        }
+    }
+
     // ------------------------------------------------------------------ ostrzeżenia
 
     /**

@@ -13,4 +13,4 @@ dependencyResolutionManagement {
     }
 }
 rootProject.name = "RadioCentrum"
-include ':radio', ':telefon'
+include ':radio', ':telefon', ':koniec'

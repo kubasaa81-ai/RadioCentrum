@@ -1,0 +1,38 @@
+plugins {
+    id 'com.android.application'
+}
+
+def rn = (System.getenv("GITHUB_RUN_NUMBER") ?: "1").toInteger()
+
+android {
+    namespace 'pl.kuba.radiocentrum.koniec'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId 'pl.kuba.radiocentrum.koniec'
+        minSdk 26
+        targetSdk 34
+        versionCode rn
+        versionName "1.0." + rn
+    }
+
+    signingConfigs {
+        shared {
+            storeFile rootProject.file('keystore/radiocentrum.jks')
+            storePassword 'radiocentrum'
+            keyAlias 'radiocentrum'
+            keyPassword 'radiocentrum'
+        }
+    }
+
+    buildTypes {
+        debug {
+            signingConfig signingConfigs.shared
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_11
+        targetCompatibility JavaVersion.VERSION_11
+    }
+}
