@@ -111,6 +111,7 @@ final class Fotoradary {
     private static void onLocation(Context c, Location l) {
         last = l;
         speedKmh = l.hasSpeed() ? Math.round(l.getSpeed() * 3.6f) : 0;
+        AccWatch.onSpeed(speedKmh);
         long now = l.getTime();
         if (l.hasBearing() && speedKmh >= 5) bearing = l.getBearing();
         if (l.hasAltitude()) altitude = l.getAltitude();

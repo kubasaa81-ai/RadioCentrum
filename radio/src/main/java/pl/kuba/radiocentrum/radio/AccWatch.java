@@ -49,6 +49,16 @@ final class AccWatch {
 
     private static final Map<String, String> snap = new HashMap<>();
     private static long lastOff, lastOn;
+    /** Po zgaszeniu – czekamy na zapalenie (radio go nie zgłasza, gdy nie zdążyło zasnąć). */
+    private static volatile boolean waitOn;
+    private static int fastCount;
+
+    /** Prędkość z GPS: jeśli po „zgaszeniu” auto jedzie, to znaczy, że zapalone. */
+    static void onSpeed(int kmh) {
+        if (!waitOn) return;
+        fastCount = kmh >= 8 ? fastCount + 1 : 0;
+        if (fastCount >= 2) on("jazda – GPS " + kmh + " km/h");
+    }
 
     static void start(final RadioService s) {
         IntentFilter f = new IntentFilter();
@@ -73,16 +83,19 @@ final class AccWatch {
         final ContentResolver cr = s.getContentResolver();
         takeSnap(cr, "system");
         takeSnap(cr, "global");
+        takeSnap(cr, "secure");
         ContentObserver ob = new ContentObserver(h) {
             @Override
             public void onChange(boolean self, Uri uri) {
-                String table = uri != null && String.valueOf(uri).contains("global") ? "global" : "system";
+                String u = String.valueOf(uri);
+                String table = u.contains("global") ? "global" : u.contains("secure") ? "secure" : "system";
                 diff(cr, table);
             }
         };
         try {
             cr.registerContentObserver(Uri.parse("content://settings/system"), true, ob);
             cr.registerContentObserver(Uri.parse("content://settings/global"), true, ob);
+            cr.registerContentObserver(Uri.parse("content://settings/secure"), true, ob);
         } catch (Exception e) {
             log("nie mogę obserwować ustawień: " + e.getMessage());
         }
@@ -134,6 +147,8 @@ final class AccWatch {
         long now = System.currentTimeMillis();
         if (now - lastOff < 20000) return;
         lastOff = now;
+        waitOn = true;
+        fastCount = 0;
         log("➡ ZGASZENIE (" + why + ") – zamykam Yanosika");
         RadioService.sendToPhone(J.obj("t", "car_off"));
     }
@@ -142,9 +157,10 @@ final class AccWatch {
         long now = System.currentTimeMillis();
         if (now - lastOn < 20000) return;
         lastOn = now;
+        waitOn = false;
         log("➡ WŁĄCZENIE (" + why + ")");
         RadioService rs = RadioService.instance;
-        if (rs != null) AutoStart.run(rs);
+        if (rs != null && !why.startsWith("jazda")) AutoStart.run(rs); // w trakcie jazdy nie przełączaj ekranu
         RadioService.sendToPhone(J.obj("t", "car_on"));
     }
 
