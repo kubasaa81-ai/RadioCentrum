@@ -210,7 +210,7 @@ final class Yanosik {
             kind = "police";
         } else if (all.matches(".*(fotoradar|radar|odcinkow|pomiar prędk|pomiar predk|suszark|laser).*")) {
             kind = "cam";
-        } else if (all.matches(".*(wypadek|kolizj|zagroż|zagroz|przeszkod|roboty|korek|utrudnien|uwaga|zwierz).*")) {
+        } else if (all.matches(".*(wypadek|kolizj|zagroż|zagroz|przeszkod|roboty|korek|utrudnien|uwaga|zwierz|zatrzyman|pobocz|awari|unieruchom|stoi na).*")) {
             kind = "danger";
         } else {
             return null;
