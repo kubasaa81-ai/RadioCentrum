@@ -476,12 +476,9 @@ public class PhoneService extends NotificationListenerService implements Link.Ha
                 main.post(() -> {
                     main.removeCallbacks(yanStop);
                     yanTries = 0;
-                    boolean had = Yanosik.running(this);
                     yanStop.run();
-                    if (!had && Prefs.yanAuto(this)) Yanosik.koniec(this); // bez powiadomienia – niech zamknie Samsung
-                    else main.postDelayed(() -> {
-                        if (Yanosik.running(this)) Yanosik.koniec(this); // przycisk nie pomógł
-                    }, 4000);
+                    // równocześnie procedura Samsunga („Koniec jazdy” → Zamknij aplikację Yanosik)
+                    if (Prefs.yanAuto(this)) Yanosik.koniec(this);
                 });
                 break;
             case "car_on":
