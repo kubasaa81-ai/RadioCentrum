@@ -121,6 +121,11 @@ final class AccWatch {
                     String name = c.getString(0).toLowerCase(Locale.ROOT);
                     if (name.contains("brightness_float") || name.equals("next_alarm_formatted")) continue;
                     if (n++ < 6) log("ustawienie " + k + ": " + old + " → " + v);
+                    if (k.equals("system:Headlamp") && "1".equals(v) && waitOn
+                            && System.currentTimeMillis() - lastOff > 3000) {
+                        // przy włożeniu kluczyka moduł CAN znowu zgłasza światła
+                        on("kluczyk – CAN Headlamp=1");
+                    }
                     if (k.equals("system:hasaccoff")) {
                         // ustawiane od razu po wyjęciu kluczyka (uśpienie radia jest dopiero ok. 44 s później)
                         if ("1".equals(v)) off("wyjęty kluczyk – hasaccoff=1");
