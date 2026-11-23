@@ -91,6 +91,13 @@ final class Pogoda {
         carScanAt = 0;
     }
 
+    /** Temperatura z modułu CAN (najpewniejsza). */
+    static void fromCan(double c) {
+        tempC = c;
+        at = System.currentTimeMillis();
+        fromCar = true;
+    }
+
     /** Odpowiedź z telefonu. */
     static void fromPhone(double c) {
         if (Double.isNaN(c) || fromCar) return;
@@ -155,6 +162,6 @@ final class Pogoda {
 
     static String info() {
         return "🌡 Temperatura: " + text() + (Double.isNaN(tempC) ? " (czekam na GPS i internet radia lub telefonu)"
-                : fromCar ? " – z auta (" + carKey + ")" : " – z pogody dla Twojego miejsca");
+                : fromCar ? " – z auta (CAN)" : " – z pogody dla Twojego miejsca");
     }
 }
