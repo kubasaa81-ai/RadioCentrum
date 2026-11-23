@@ -1131,6 +1131,7 @@ public class MainActivity extends Activity {
                 o.btn("🎚 Efekt dźwiękowy / korektor", Ui.PURPLE, true,
                         () -> openComp("com.xy.tda7729", "com.xy.tda7729.MainActivity")));
         o.row(o.btn("🎤 Test mikrofonów (który słyszy?)", 0xFFAD1457, true, () -> MicTest.show(this)));
+        o.row(o.btn("📦 Zapisz aplikacje CAN do Pobranych (analiza paliwa)", 0xFF4E342E, true, this::exportCanApks));
         o.row(o.btn("🎙 Test mikrofonu (nagraj i odsłuchaj)", Ui.GREEN, true,
                         () -> openComp("com.android.soundrecorder", "com.android.soundrecorder.SoundRecorder")),
                 o.btn("📶 Ustawienia Bluetooth radia", Ui.BLUE, true,
@@ -1890,6 +1891,46 @@ public class MainActivity extends Activity {
     }
 
     /** Zbiera diagnostykę, zapisuje w radiu (Pobrane) i wysyła do telefonu (Pobrane w telefonie). */
+    /** Kopiuje pliki APK aplikacji CAN do Pobranych – do analizy, jak odczytać paliwo / zasięg. */
+    private void exportCanApks() {
+        toast("Zapisuję… chwilkę");
+        new Thread(() -> {
+            String[] pkgs = {"com.xygala.canbus", "com.example.tmedia", "com.xygala.pvcanset"};
+            StringBuilder sb = new StringBuilder();
+            java.io.File dir = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS);
+            dir.mkdirs();
+            for (String p : pkgs) {
+                try {
+                    android.content.pm.ApplicationInfo ai = getPackageManager().getApplicationInfo(p, 0);
+                    java.util.List<String> src = new java.util.ArrayList<>();
+                    src.add(ai.sourceDir);
+                    if (ai.splitSourceDirs != null) java.util.Collections.addAll(src, ai.splitSourceDirs);
+                    int n = 0;
+                    for (String f : src) {
+                        java.io.File out = new java.io.File(dir, "CAN-" + p + (n == 0 ? "" : "-" + n) + ".apk");
+                        try (java.io.InputStream in = new java.io.FileInputStream(f);
+                             java.io.OutputStream os = new java.io.FileOutputStream(out)) {
+                            byte[] b = new byte[65536];
+                            int r;
+                            while ((r = in.read(b)) > 0) os.write(b, 0, r);
+                        }
+                        sb.append("✔ ").append(out.getName()).append(" (").append(out.length() / 1024).append(" KB)\n");
+                        n++;
+                    }
+                } catch (Exception e) {
+                    sb.append("✖ ").append(p).append(": ").append(e.getMessage()).append("\n");
+                }
+            }
+            final String msg = sb.toString();
+            runOnUiThread(() -> {
+                Okno o = new Okno(this, "📦 Zapisano w Pobranych",
+                        msg + "\nTeraz na telefonie: „📥 Pobierz pliki z radia” i wyślij te pliki w czacie.");
+                o.cancel("OK");
+                o.show();
+            });
+        }, "rc-apk").start();
+    }
+
     private void diagnose() {
         if (android.os.Build.VERSION.SDK_INT >= 23 && checkSelfPermission(
                 android.Manifest.permission.WRITE_EXTERNAL_STORAGE) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
