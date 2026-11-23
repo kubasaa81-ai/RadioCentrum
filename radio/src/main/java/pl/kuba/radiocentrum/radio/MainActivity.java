@@ -1131,7 +1131,7 @@ public class MainActivity extends Activity {
                 o.btn("🎚 Efekt dźwiękowy / korektor", Ui.PURPLE, true,
                         () -> openComp("com.xy.tda7729", "com.xy.tda7729.MainActivity")));
         o.row(o.btn("🎤 Test mikrofonów (który słyszy?)", 0xFFAD1457, true, () -> MicTest.show(this)));
-        o.row(o.btn("📦 Zapisz aplikacje CAN do Pobranych (analiza paliwa)", 0xFF4E342E, true, this::exportCanApks));
+        o.row(o.btn("🔎 Podsłuch CAN 2 min (paliwo, zasięg)", 0xFF00695C, true, () -> CanSniff.show(this)));
         o.row(o.btn("🎙 Test mikrofonu (nagraj i odsłuchaj)", Ui.GREEN, true,
                         () -> openComp("com.android.soundrecorder", "com.android.soundrecorder.SoundRecorder")),
                 o.btn("📶 Ustawienia Bluetooth radia", Ui.BLUE, true,
