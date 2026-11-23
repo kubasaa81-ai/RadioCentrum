@@ -52,6 +52,7 @@ final class CanProbe {
             sb.append("plików systemu: ").append(files.size()).append("\n");
             for (File f : files) {
                 String n = f.getName();
+                if (n.contains("services")) continue; // te już mamy
                 try {
                     if (n.endsWith(".jar") || n.endsWith(".apk")) {
                         try (ZipFile z = new ZipFile(f)) {
@@ -59,39 +60,49 @@ final class CanProbe {
                             while (en.hasMoreElements()) {
                                 ZipEntry e = en.nextElement();
                                 if (!e.getName().endsWith(".dex")) continue;
+                                if (!streamHas(z.getInputStream(e), key)) continue;
                                 byte[] data = readAll(z.getInputStream(e));
-                                if (indexOf(data, key, 0) >= 0) {
-                                    found |= save(dir, "CAN-system-" + n + "-" + e.getName(), data, sb);
-                                }
+                                found |= save(dir, "CAN-system-" + n + "-" + e.getName(), data, sb);
                             }
                         }
                     } else if (n.endsWith(".vdex") || n.endsWith(".odex") || n.endsWith(".dex")) {
-                        if (f.length() > 200L * 1024 * 1024) continue;
-                        byte[] data = readAll(new java.io.FileInputStream(f));
-                        int k = indexOf(data, key, 0);
-                        if (k < 0) continue;
-                        // znajdź początek dex („dex\n0”) przed trafieniem i wytnij cały dex
-                        byte[] magic = "dex\n0".getBytes();
-                        int st = -1, pos = 0;
-                        while (true) {
-                            int m = indexOf(data, magic, pos);
-                            if (m < 0 || m > k) break;
-                            st = m;
-                            pos = m + 1;
-                        }
-                        if (st >= 0 && st + 0x24 <= data.length) {
-                            int size = (data[st + 0x20] & 0xff) | (data[st + 0x21] & 0xff) << 8
-                                    | (data[st + 0x22] & 0xff) << 16 | (data[st + 0x23] & 0xff) << 24;
-                            if (size > 0 && st + size <= data.length) {
-                                byte[] dex = java.util.Arrays.copyOfRange(data, st, st + size);
-                                found |= save(dir, "CAN-system-" + n + ".dex", dex, sb);
-                                continue;
+                        long hit = streamFind(f, key);
+                        if (hit < 0) continue;
+                        // początek dex przed trafieniem
+                        long st = -1;
+                        try (java.io.RandomAccessFile raf = new java.io.RandomAccessFile(f, "r")) {
+                            byte[] buf = new byte[1 << 20];
+                            long pos = 0;
+                            while (pos < hit) {
+                                raf.seek(pos);
+                                int r = raf.read(buf);
+                                if (r <= 0) break;
+                                for (int i = 0; i + 4 < r && pos + i < hit; i++) {
+                                    if (buf[i] == 'd' && buf[i + 1] == 'e' && buf[i + 2] == 'x' && buf[i + 3] == '\n') st = pos + i;
+                                }
+                                pos += r - 8;
+                            }
+                            if (st >= 0) {
+                                byte[] h = new byte[0x70];
+                                raf.seek(st);
+                                raf.readFully(h);
+                                long size = (h[0x20] & 0xff) | (h[0x21] & 0xff) << 8 | (h[0x22] & 0xff) << 16 | (long) (h[0x23] & 0xff) << 24;
+                                long dataEnd = ((h[0x68] & 0xff) | (h[0x69] & 0xff) << 8 | (h[0x6a] & 0xff) << 16 | (long) (h[0x6b] & 0xff) << 24)
+                                        + ((h[0x6c] & 0xff) | (h[0x6d] & 0xff) << 8 | (h[0x6e] & 0xff) << 16 | (long) (h[0x6f] & 0xff) << 24);
+                                long len = Math.min(Math.max(size, dataEnd), f.length() - st);
+                                if (len > 0 && len < 60L * 1024 * 1024) {
+                                    byte[] dex = new byte[(int) len];
+                                    raf.seek(st);
+                                    raf.readFully(dex);
+                                    found |= save(dir, "CAN-system-" + n + ".dex", dex, sb);
+                                    continue;
+                                }
                             }
                         }
-                        sb.append("trafienie w ").append(f.getPath()).append(" (bez wycięcia dex)\n");
+                        sb.append("trafienie w ").append(f.getPath()).append(" @").append(hit).append(" (bez wycięcia)\n");
                     }
                 } catch (Throwable t) {
-                    // pomiń nieczytelne pliki
+                    sb.append("✖ ").append(f.getPath()).append(": ").append(t.getClass().getSimpleName()).append("\n");
                 }
             }
             if (!found) sb.append("✖ nie znalazłem opisu usługi w plikach systemu\n");
@@ -112,6 +123,50 @@ final class CanProbe {
             if (f.isDirectory()) collect(f, out, depth + 1);
             else out.add(f);
         }
+    }
+
+    /** Szuka ciągu w strumieniu kawałkami (bez wczytywania całości). */
+    private static boolean streamHas(InputStream in, byte[] key) throws java.io.IOException {
+        try {
+            byte[] buf = new byte[1 << 20];
+            int keep = 0, r;
+            while ((r = in.read(buf, keep, buf.length - keep)) > 0) {
+                int len = keep + r;
+                if (indexOfLen(buf, len, key) >= 0) return true;
+                keep = Math.min(key.length, len);
+                System.arraycopy(buf, len - keep, buf, 0, keep);
+            }
+            return false;
+        } finally {
+            in.close();
+        }
+    }
+
+    private static long streamFind(File f, byte[] key) throws java.io.IOException {
+        try (InputStream in = new java.io.FileInputStream(f)) {
+            byte[] buf = new byte[1 << 20];
+            int keep = 0, r;
+            long base = 0;
+            while ((r = in.read(buf, keep, buf.length - keep)) > 0) {
+                int len = keep + r;
+                int i = indexOfLen(buf, len, key);
+                if (i >= 0) return base + i;
+                keep = Math.min(key.length, len);
+                System.arraycopy(buf, len - keep, buf, 0, keep);
+                base += len - keep;
+            }
+            return -1;
+        }
+    }
+
+    private static int indexOfLen(byte[] d, int n, byte[] k) {
+        outer:
+        for (int i = 0; i <= n - k.length; i++) {
+            if (d[i] != k[0]) continue;
+            for (int j = 1; j < k.length; j++) if (d[i + j] != k[j]) continue outer;
+            return i;
+        }
+        return -1;
     }
 
     private static byte[] readAll(InputStream in) throws java.io.IOException {
