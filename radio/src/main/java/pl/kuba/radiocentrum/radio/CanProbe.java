@@ -105,6 +105,11 @@ final class CanProbe {
                     sb.append("✖ ").append(f.getPath()).append(": ").append(t.getClass().getSimpleName()).append("\n");
                 }
             }
+            File fw = new File(dir, "CAN-system-boot-framework.vdex.dex");
+            if (fw.exists()) {
+                sb.append("\n").append(DexConst.read(fw, "Landroid/os/ICanbusService$Stub;",
+                        "Landroid/os/ICanbusInterface$Stub;"));
+            }
             if (!found) sb.append("✖ nie znalazłem opisu usługi w plikach systemu\n");
             final String msg = sb.toString();
             a.runOnUiThread(() -> {
