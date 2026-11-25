@@ -12,7 +12,9 @@ import java.util.Locale;
 
 /**
  * Odbiór danych z modułu CAN (Raise VW PQ) przez systemową usługę radia „canbus_service”.
- * Rejestrujemy się jako DODATKOWY słuchacz (usługa trzyma listę) – nic nie wysyłamy do auta.
+ * Usługa ma DWIE listy słuchaczy i dane dostaje ostatni z każdej listy. Fabryczna aplikacja CAN
+ * jest na pierwszej (setCanbusInterface = 3), my dopisujemy się do drugiej (setCanbusInterface_other = 5),
+ * więc obie aplikacje dostają dane naraz. Nic nie wysyłamy do auta.
  * Ramka 0x41 (informacje o aucie): paliwo [12] w litrach, przebieg [9..11], temperatura [7..8].
  */
 final class CanBus {
@@ -21,7 +23,8 @@ final class CanBus {
 
     private static final String SVC = "android.os.ICanbusService";
     private static final String CB = "android.os.ICanbusInterface";
-    private static final int TX_SET_INTERFACE = 3;   // setCanbusInterface
+    private static final int TX_SET_OTHER = 5;       // setCanbusInterface_other (druga lista)
+    private static final int TX_REMOVE_OTHER = 6;    // removeCanbusInterface_other
     private static final int TX_ON_RESULT = 1;       // ICanbusInterface.onResult(byte[], int)
 
     static volatile int fuelL = -1;
@@ -36,6 +39,12 @@ final class CanBus {
     private static final byte[] buf = new byte[512];
     private static int bufLen;
     private static long lastLog;
+    private static IBinder svcRef;
+    private static volatile boolean wanted;
+    // podgląd surowych danych
+    static volatile int chunks, frames;
+    static volatile String lastChunk = "–";
+    private static final java.util.TreeMap<Integer, String> lastByCmd = new java.util.TreeMap<>();
 
     private static final Binder callback = new Binder() {
         {
@@ -65,11 +74,34 @@ final class CanBus {
 
     static void start(Context c) {
         app = c.getApplicationContext();
+        wanted = true;
         h.post(CanBus::register);
     }
 
+    /** Odłącz się od usługi CAN (fabryczna aplikacja nadal działa). */
+    static void stop() {
+        wanted = false;
+        h.removeCallbacksAndMessages(null);
+        IBinder svc = svcRef;
+        if (svc != null && registered) {
+            Parcel d = Parcel.obtain(), r = Parcel.obtain();
+            try {
+                d.writeInterfaceToken(SVC);
+                d.writeStrongBinder(callback);
+                svc.transact(TX_REMOVE_OTHER, d, r, 0);
+                r.readException();
+            } catch (Throwable ignored) {
+            } finally {
+                d.recycle();
+                r.recycle();
+            }
+        }
+        registered = false;
+        status = "wyłączone";
+    }
+
     private static void register() {
-        if (registered) return;
+        if (registered || !wanted) return;
         try {
             Class<?> sm = Class.forName("android.os.ServiceManager");
             IBinder svc = (IBinder) sm.getMethod("getService", String.class).invoke(null, "canbus_service");
@@ -78,30 +110,33 @@ final class CanBus {
             try {
                 d.writeInterfaceToken(SVC);
                 d.writeStrongBinder(callback);
-                svc.transact(TX_SET_INTERFACE, d, r, 0);
+                svc.transact(TX_SET_OTHER, d, r, 0);
                 r.readException();
             } finally {
                 d.recycle();
                 r.recycle();
             }
             registered = true;
-            status = "połączono z CAN";
+            svcRef = svc;
+            status = "połączono z CAN (druga lista – obok fabrycznej)";
             try {
                 svc.linkToDeath(() -> {
                     registered = false;
                     status = "usługa CAN zrestartowana";
-                    h.postDelayed(CanBus::register, 5000);
+                    if (wanted) h.postDelayed(CanBus::register, 5000);
                 }, 0);
             } catch (Exception ignored) {
             }
         } catch (Throwable t) {
             status = "błąd: " + t.getClass().getSimpleName();
-            h.postDelayed(CanBus::register, 30000);
+            if (wanted) h.postDelayed(CanBus::register, 30000);
         }
     }
 
     /** Surowe bajty z modułu – składamy ramki Raise: 0x2E, cmd, len, dane…, suma. */
     private static synchronized void feed(byte[] b, int n) {
+        chunks++;
+        lastChunk = hex(b, n);
         for (int i = 0; i < n; i++) {
             if (bufLen >= buf.length) bufLen = 0;
             buf[bufLen++] = b[i];
@@ -131,8 +166,35 @@ final class CanBus {
         }
     }
 
+    static String hex(byte[] b, int n) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < n && i < 64; i++) sb.append(String.format("%02X ", b[i] & 0xff));
+        return sb.toString().trim();
+    }
+
+    /** Podgląd do porównania z fabrycznym ekranem „Informacje o aucie”. */
+    static synchronized String dump() {
+        StringBuilder sb = new StringBuilder();
+        sb.append("Stan: ").append(status).append("\n");
+        sb.append("Odebrane paczki: ").append(chunks).append(", ramki: ").append(frames).append("\n");
+        sb.append("Ostatnia paczka: ").append(lastChunk).append("\n\n");
+        sb.append("Odczytane: paliwo ").append(fuelText()).append(", przebieg ")
+                .append(mileageKm < 0 ? "–" : mileageKm + " km").append(", temp. ")
+                .append(Double.isNaN(outTemp) ? "–" : String.format(Locale.US, "%.1f°C", outTemp)).append("\n\n");
+        sb.append("Ostatnia ramka każdego rodzaju (rodzaj: bajty):\n");
+        if (lastByCmd.isEmpty()) sb.append("  brak – nic nie przyszło\n");
+        for (java.util.Map.Entry<Integer, String> e : lastByCmd.entrySet()) {
+            sb.append(String.format("0x%02X: ", e.getKey())).append(e.getValue()).append("\n");
+        }
+        return sb.toString();
+    }
+
     private static void frame(byte[] f) {
         int cmd = f[1] & 0xff;
+        frames++;
+        synchronized (CanBus.class) {
+            lastByCmd.put(cmd, hex(f, f.length));
+        }
         if (cmd != 0x41 || f.length < 13) return;
         int fuel = f[12] & 0xff;
         int km = ((f[9] & 0xff) << 16) | ((f[10] & 0xff) << 8) | (f[11] & 0xff);

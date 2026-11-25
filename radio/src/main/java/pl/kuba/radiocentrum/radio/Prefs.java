@@ -88,4 +88,13 @@ final class Prefs {
     static void setCode(Context c, String code) {
         c.getSharedPreferences("rc", Context.MODE_PRIVATE).edit().putString("code", code).apply();
     }
+
+    /** Odbiór danych z CAN (druga lista słuchaczy – obok fabrycznej aplikacji). */
+    static boolean canOn(Context c) {
+        return c.getSharedPreferences("rc", Context.MODE_PRIVATE).getBoolean("canOn", false);
+    }
+
+    static void setCanOn(Context c, boolean v) {
+        c.getSharedPreferences("rc", Context.MODE_PRIVATE).edit().putBoolean("canOn", v).apply();
+    }
 }

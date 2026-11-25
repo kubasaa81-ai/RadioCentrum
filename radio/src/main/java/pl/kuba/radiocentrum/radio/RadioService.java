@@ -103,8 +103,8 @@ public class RadioService extends Service implements Link.Handler {
         // start radia: Android Auto (ZLink), potem Pulpit
         AutoStart.run(this);
         AccWatch.start(this); // zgaszenie / włączenie zapłonu → Yanosik
-        // CanBus wyłączony: usługa CAN radia przekazuje dane tylko ostatniemu słuchaczowi,
-        // więc podłączenie zabierało dane fabrycznej aplikacji CAN.
+        // CAN: dopisujemy się do DRUGIEJ listy słuchaczy, fabryczna aplikacja zostaje na pierwszej
+        if (Prefs.canOn(this)) CanBus.start(this);
         // wybudzenie radia (zapłon) – ekran się włącza
         android.content.IntentFilter sf = new android.content.IntentFilter(Intent.ACTION_SCREEN_ON);
         sf.addAction(Intent.ACTION_SCREEN_OFF);

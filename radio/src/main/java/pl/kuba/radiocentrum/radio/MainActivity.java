@@ -1120,6 +1120,16 @@ public class MainActivity extends Activity {
         }
     }
 
+    /** Surowe dane z CAN – do porównania z fabrycznym ekranem i ustawienia właściwych bajtów. */
+    private void canView() {
+        Okno o = new Okno(this, "🔎 Podgląd CAN", CanBus.dump()
+                + "\nZrób zdjęcie tego okna i zdjęcie fabrycznego ekranu „Dane auta” (paliwo, przebieg, temperatura) – wyślij oba w czacie.");
+        o.row(o.btn("🔄 Odśwież", Ui.BLUE, true, this::canView),
+                o.btn("🚙 Fabryczne Dane auta", 0xFF2E7D32, true, () -> openPkg("com.xygala.canbus")));
+        o.cancel("✖ Zamknij");
+        o.show();
+    }
+
     /** Skróty do ukrytych / fabrycznych ekranów radia (znalezionych w diagnostyce). */
     private void tools() {
         Okno o = new Okno(this, "🛠 Narzędzia radia",
@@ -1131,7 +1141,18 @@ public class MainActivity extends Activity {
                 o.btn("🎚 Efekt dźwiękowy / korektor", Ui.PURPLE, true,
                         () -> openComp("com.xy.tda7729", "com.xy.tda7729.MainActivity")));
         o.row(o.btn("🎤 Test mikrofonów (który słyszy?)", 0xFFAD1457, true, () -> MicTest.show(this)));
-        o.row(o.btn("🔬 Sonda CAN (paliwo) – bezpieczna", 0xFF00695C, true, () -> CanProbe.run(this)));
+        boolean can = Prefs.canOn(this);
+        o.row(o.btn(can ? "⛽ Dane z CAN: WŁĄCZONE (kliknij, by wyłączyć)" : "⛽ Dane z CAN: wyłączone (kliknij – test)",
+                        can ? 0xFF2E7D32 : 0xFF00695C, true, () -> {
+                            boolean nw = !Prefs.canOn(this);
+                            Prefs.setCanOn(this, nw);
+                            if (nw) CanBus.start(this);
+                            else CanBus.stop();
+                            toast(nw ? "Dane z CAN włączone. Otwórz fabryczne „Dane auta” i sprawdź, czy nadal pokazuje paliwo."
+                                    : "Dane z CAN wyłączone");
+                        }),
+                o.btn("🔎 Podgląd CAN", 0xFF00838F, true, this::canView));
+        o.row(o.btn("🔬 Sonda CAN – bezpieczna", 0xFF455A64, true, () -> CanProbe.run(this)));
         o.row(o.btn("🎙 Test mikrofonu (nagraj i odsłuchaj)", Ui.GREEN, true,
                         () -> openComp("com.android.soundrecorder", "com.android.soundrecorder.SoundRecorder")),
                 o.btn("📶 Ustawienia Bluetooth radia", Ui.BLUE, true,
