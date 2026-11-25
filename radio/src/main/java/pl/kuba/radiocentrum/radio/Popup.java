@@ -305,18 +305,63 @@ final class Popup {
         return 0;
     }
 
-    /** Krótki sygnał ostrzegawczy (policja: dwa krótkie, fotoradar i reszta: jeden dłuższy). */
+    /**
+     * Głośny sygnał ostrzegawczy: pełna głośność dźwięku (nie cichy ton systemowy), muzyka na chwilę ściszona.
+     * Policja: 3 szybkie wysokie piknięcia. Fotoradar i reszta: 2 dłuższe dwutonowe.
+     */
+    @SuppressWarnings("deprecation")
     private static void beep(String kind) {
-        try {
-            final android.media.ToneGenerator tg = new android.media.ToneGenerator(
-                    android.media.AudioManager.STREAM_MUSIC, 90);
-            if ("police".equals(kind)) {
-                tg.startTone(android.media.ToneGenerator.TONE_PROP_BEEP2, 500);
-            } else {
-                tg.startTone(android.media.ToneGenerator.TONE_CDMA_ALERT_CALL_GUARD, 900);
+        new Thread(() -> {
+            android.media.AudioManager am = (android.media.AudioManager) app.getSystemService(Context.AUDIO_SERVICE);
+            android.media.AudioManager.OnAudioFocusChangeListener fl = f -> {
+            };
+            try {
+                if (am != null) am.requestAudioFocus(fl, android.media.AudioManager.STREAM_MUSIC,
+                        android.media.AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK);
+                int rate = 44100;
+                java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+                if ("police".equals(kind)) {
+                    for (int i = 0; i < 3; i++) {
+                        tone(out, rate, 1400, 180);
+                        tone(out, rate, 0, 90);
+                    }
+                } else {
+                    for (int i = 0; i < 2; i++) {
+                        tone(out, rate, 1000, 250);
+                        tone(out, rate, 1500, 250);
+                        tone(out, rate, 0, 120);
+                    }
+                }
+                byte[] pcm = out.toByteArray();
+                android.media.AudioTrack t = new android.media.AudioTrack(android.media.AudioManager.STREAM_MUSIC,
+                        rate, android.media.AudioFormat.CHANNEL_OUT_MONO, android.media.AudioFormat.ENCODING_PCM_16BIT,
+                        pcm.length, android.media.AudioTrack.MODE_STATIC);
+                t.write(pcm, 0, pcm.length);
+                t.setStereoVolume(1f, 1f);
+                t.play();
+                Thread.sleep(pcm.length * 1000L / (rate * 2) + 200);
+                t.release();
+            } catch (Throwable ignored) {
+            } finally {
+                if (am != null) am.abandonAudioFocus(fl);
             }
-            h.postDelayed(tg::release, 1500);
-        } catch (Exception ignored) {
+        }, "rc-beep").start();
+    }
+
+    /** Ton prostokątny z łagodnym brzegiem – najgłośniejszy przy tej samej głośności radia. freq 0 = cisza. */
+    private static void tone(java.io.ByteArrayOutputStream out, int rate, int freq, int ms) {
+        int n = rate * ms / 1000, fade = rate / 200;
+        for (int i = 0; i < n; i++) {
+            double v = 0;
+            if (freq > 0) {
+                double ph = Math.sin(2 * Math.PI * freq * i / rate);
+                v = Math.max(-1, Math.min(1, ph * 3)); // prawie prostokąt – głośniej niż czysty sinus
+                double env = Math.min(1, Math.min(i, n - 1 - i) / (double) fade);
+                v *= env * 0.97;
+            }
+            short x = (short) (v * 32767);
+            out.write(x & 0xff);
+            out.write((x >> 8) & 0xff);
         }
     }
 
