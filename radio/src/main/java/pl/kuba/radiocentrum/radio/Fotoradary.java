@@ -149,12 +149,7 @@ final class Fotoradary {
         if (bc != null && best < 600 && speedKmh >= 20 && !alerted.contains((long) bc[3])) {
             alerted.add((long) bc[3]);
             int m = (int) (Math.round(best / 50.0) * 50);
-            int lim = (int) bc[2];
-            String say = "Uwaga, fotoradar za " + m + " metrów" + (lim > 0 ? ". Ograniczenie " + lim + "." : ".");
-            Mowa.speak(c, say);
-            String text = (lim > 0 ? "Ograniczenie " + lim + " km/h · " : "") + "jedziesz " + speedKmh + " km/h";
-            Popup.showNotif(c, J.obj("t", "notif", "key", "cam", "app", "Fotoradar",
-                    "title", "📷 Fotoradar za " + m + " m", "text", text));
+            Popup.showAlert(c, "cam", "", m); // znak na środku + sygnał (bez czytania na głos)
         }
     }
 

@@ -134,12 +134,12 @@ public class PhoneService extends NotificationListenerService implements Link.Ha
                 String mac = Prefs.radioMac(PhoneService.this);
                 if (d == null || mac == null || !mac.equalsIgnoreCase(d.getAddress())) return;
                 if (BluetoothDevice.ACTION_ACL_CONNECTED.equals(i.getAction())) {
-                    // auto zapalone – Bluetooth radia wstał: od razu Yanosik i od razu łącz się z radiem
+                    // Bluetooth radia wstał (radio może być jeszcze w czuwaniu): łącz się z radiem,
+                    // a Yanosika włączy dopiero polecenie z radia – gdy zapalą się światła
                     carOff = false;
                     main.removeCallbacks(yanStop);
                     yanTries = 0;
-                    Yanosik.add("Bluetooth radia połączony (zapalone auto)");
-                    if (!Yanosik.running(PhoneService.this)) Yanosik.start(PhoneService.this);
+                    Yanosik.add("Bluetooth radia połączony – Yanosik czeka na światła");
                     Thread t = btThread;
                     if (t != null) t.interrupt();
                     return;
@@ -394,11 +394,7 @@ public class PhoneService extends NotificationListenerService implements Link.Ha
         }
         main.removeCallbacks(yanStop);
         carOff = false;
-        main.postDelayed(() -> {
-            if (Yanosik.running(this)) return;
-            String msg = Yanosik.start(this);
-            if (msg != null) send(J.obj("t", "toast", "text", msg));
-        }, 500);
+        // Yanosika włącza radio (car_on), gdy zapalą się światła – po „hello” radio samo powie, czy się palą
         status = "Połączono z radiem (" + l.kind + ")";
         new Thread(() -> l.runReader(this), "rc-read").start();
         sendExec.execute(() -> {

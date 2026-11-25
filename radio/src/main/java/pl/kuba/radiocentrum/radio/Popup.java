@@ -23,10 +23,11 @@ final class Popup {
     }
 
     private static Context app;
-    private static View notifView, callView;
+    private static View notifView, callView, alertView;
     private static String lastNum, lastName;
     private static final Handler h = new Handler(Looper.getMainLooper());
     private static final Runnable autoHide = () -> hideNotif();
+    private static final Runnable alertHide = () -> hideAlert();
 
     static boolean canDraw(Context c) {
         return Build.VERSION.SDK_INT < 23 || Settings.canDrawOverlays(c);
@@ -165,6 +166,168 @@ final class Popup {
             } catch (Exception ignored) {
             }
             notifView = null;
+        }
+    }
+
+    // ------------------------------------------------------------------ ostrzeżenie (znak na środku)
+
+    /**
+     * Duży znak na środku ekranu: co to jest (kontrola policji, fotoradar, zagrożenie),
+     * jakie jest ograniczenie i z jaką prędkością jedziesz. Do tego krótki sygnał – bez czytania na głos.
+     *
+     * @param kind   police / cam / danger
+     * @param text   tekst z Yanosika (z niego bierzemy szczegóły i ograniczenie, jeśli jest)
+     * @param distM  odległość w metrach (fotoradar z bazy radia) albo -1
+     */
+    static void showAlert(Context c, String kind, String text, int distM) {
+        app = c.getApplicationContext();
+        h.post(() -> {
+            beep(kind);
+            if (!canDraw(app)) return;
+            hideAlert();
+            String low = text == null ? "" : text.toLowerCase(java.util.Locale.ROOT);
+            String icon, label;
+            int accent;
+            if ("police".equals(kind)) {
+                icon = "🚓";
+                label = low.matches(".*(nieoznakow).*") ? "NIEOZNAKOWANA POLICJA"
+                        : low.matches(".*(patrol|radiowóz|radiowoz).*") && !low.contains("kontrol") ? "PATROL POLICJI"
+                        : "KONTROLA POLICJI";
+                accent = Ui.BLUE;
+            } else if ("cam".equals(kind)) {
+                icon = "📷";
+                label = low.matches(".*(odcinkow).*") ? "ODCINKOWY POMIAR"
+                        : low.matches(".*(suszark|laser|ręczn|reczn|mobiln).*") ? "POMIAR PRĘDKOŚCI"
+                        : "FOTORADAR";
+                accent = Ui.ORANGE;
+            } else {
+                icon = "⚠";
+                label = low.matches(".*(wypadek|kolizj).*") ? "WYPADEK"
+                        : low.matches(".*(roboty).*") ? "ROBOTY DROGOWE"
+                        : low.matches(".*(korek|utrudnien).*") ? "KOREK"
+                        : low.matches(".*(zwierz).*") ? "ZWIERZĘ NA DRODZE"
+                        : low.matches(".*(zatrzyman|pobocz|awari|unieruchom|stoi na).*") ? "POJAZD NA DRODZE"
+                        : low.matches(".*(przeszkod).*") ? "PRZESZKODA"
+                        : "UWAGA NA DRODZE";
+                accent = Ui.RED;
+            }
+            int lim = limitFrom(low);
+            if (lim <= 0 && "cam".equals(kind) && Fotoradary.nearestM >= 0 && Fotoradary.nearestM < 1500) {
+                lim = Fotoradary.nearestLim;
+            }
+            int speed = Fotoradary.speedKmh;
+
+            LinearLayout card = card(accent);
+            card.setGravity(Gravity.CENTER_HORIZONTAL);
+            int p = Ui.dp(app, 20);
+            card.setPadding(p, Ui.dp(app, 14), p, Ui.dp(app, 16));
+
+            TextView ic = Ui.text(app, icon, 52, Ui.WHITE, false);
+            ic.setGravity(Gravity.CENTER);
+            card.addView(ic, new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+            TextView lb = Ui.text(app, label, 30, accent == Ui.BLUE ? 0xFF64B5F6 : accent, true);
+            lb.setGravity(Gravity.CENTER);
+            lb.setMaxLines(2);
+            card.addView(lb, new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+            if (distM > 0) {
+                TextView d = Ui.text(app, "za " + distM + " m", 22, Ui.WHITE, true);
+                d.setGravity(Gravity.CENTER);
+                card.addView(d, new LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+            }
+
+            LinearLayout row = new LinearLayout(app);
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            row.setGravity(Gravity.CENTER);
+            if (lim > 0) {
+                int sz = Ui.dp(app, 100);
+                TextView sign = Ui.text(app, String.valueOf(lim), lim >= 100 ? 34 : 42, 0xFF111111, true);
+                sign.setGravity(Gravity.CENTER);
+                GradientDrawable g = new GradientDrawable();
+                g.setShape(GradientDrawable.OVAL);
+                g.setColor(Ui.WHITE);
+                g.setStroke(Ui.dp(app, 10), Ui.RED);
+                sign.setBackground(g);
+                LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(sz, sz);
+                sp.rightMargin = Ui.dp(app, 18);
+                row.addView(sign, sp);
+            }
+            if (speed > 0) {
+                boolean tooFast = lim > 0 && speed > lim + 3;
+                LinearLayout col = new LinearLayout(app);
+                col.setOrientation(LinearLayout.VERTICAL);
+                col.setGravity(Gravity.CENTER_HORIZONTAL);
+                col.addView(Ui.text(app, "jedziesz", 18, Ui.GREY, false));
+                col.addView(Ui.text(app, speed + " km/h", 34, tooFast ? 0xFFFF5252 : 0xFF81C784, true));
+                if (tooFast) col.addView(Ui.text(app, "ZWOLNIJ!", 22, 0xFFFF5252, true));
+                row.addView(col);
+            } else if (lim <= 0) {
+                row.setVisibility(View.GONE);
+            }
+            LinearLayout.LayoutParams rp = new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+            rp.topMargin = Ui.dp(app, 10);
+            card.addView(row, rp);
+            card.setOnClickListener(v -> hideAlert());
+
+            WindowManager.LayoutParams wp = params(0);
+            int w = app.getResources().getDisplayMetrics().widthPixels;
+            wp.width = Math.min((int) (w * 0.62f), Ui.dp(app, 600));
+            wp.gravity = Gravity.CENTER;
+            wp.y = 0;
+            try {
+                wm().addView(card, wp);
+                alertView = card;
+            } catch (Exception e) {
+                alertView = null;
+                return;
+            }
+            h.removeCallbacks(alertHide);
+            h.postDelayed(alertHide, 10000);
+        });
+    }
+
+    /** Ograniczenie z tekstu Yanosika, np. „50 km/h” albo „ograniczenie 70”. 0 = brak. */
+    private static int limitFrom(String low) {
+        java.util.regex.Matcher mt = java.util.regex.Pattern
+                .compile("(?:ograniczeni\\S*|limit|max\\.?|maks\\S*)\\s*(?:do\\s*)?(\\d{2,3})|(\\d{2,3})\\s*km\\s*/\\s*h")
+                .matcher(low);
+        while (mt.find()) {
+            String g = mt.group(1) != null ? mt.group(1) : mt.group(2);
+            try {
+                int v = Integer.parseInt(g);
+                if (v >= 20 && v <= 140 && v % 10 == 0) return v;
+            } catch (Exception ignored) {
+            }
+        }
+        return 0;
+    }
+
+    /** Krótki sygnał ostrzegawczy (policja: dwa krótkie, fotoradar i reszta: jeden dłuższy). */
+    private static void beep(String kind) {
+        try {
+            final android.media.ToneGenerator tg = new android.media.ToneGenerator(
+                    android.media.AudioManager.STREAM_MUSIC, 90);
+            if ("police".equals(kind)) {
+                tg.startTone(android.media.ToneGenerator.TONE_PROP_BEEP2, 500);
+            } else {
+                tg.startTone(android.media.ToneGenerator.TONE_CDMA_ALERT_CALL_GUARD, 900);
+            }
+            h.postDelayed(tg::release, 1500);
+        } catch (Exception ignored) {
+        }
+    }
+
+    static void hideAlert() {
+        h.removeCallbacks(alertHide);
+        if (alertView != null) {
+            try {
+                wm().removeView(alertView);
+            } catch (Exception ignored) {
+            }
+            alertView = null;
         }
     }
 

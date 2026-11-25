@@ -48,24 +48,49 @@ final class AccWatch {
     };
 
     private static final Map<String, String> snap = new HashMap<>();
-    /** null = nie wiadomo, true = auto zapalone, false = zgaszone. */
+    /** null = nie wiadomo, true = radio obudzone, false = zgaszone. */
     private static volatile Boolean carOn;
+    /** Telefon dostał polecenie „włącz Yanosika” (car_on). Wysyłamy je TYLKO przy światłach albo jeździe. */
+    private static volatile boolean yanOn;
     /** Ostatnie „zgaszenie” wynikało ze zgaszenia świateł (wtedy GPS nie włącza z powrotem). */
     private static volatile boolean lampOff;
     private static int fastCount;
     private static Handler lampH;
+    private static ContentResolver res;
     /** Światła: reaguj dopiero, gdy stan utrzyma się 3 s (przy kluczyku sygnał chwilę „mruga”). */
     private static final Runnable lampCheck = () -> {
         String v = snap.get("system:Headlamp");
-        if ("1".equals(v)) on("światła włączone");
-        else if ("0".equals(v)) off("światła wyłączone");
+        if ("1".equals(v)) yanOn("światła włączone");
+        else if ("0".equals(v) && yanOn) off("światła wyłączone");
     };
 
-    /** Prędkość z GPS: jeśli po zgaszeniu (kluczykiem) auto jedzie, to znaczy, że zapalone. */
+    /** Prędkość z GPS: jeśli auto jedzie, a Yanosik nie działa (np. jazda bez świateł), włącz go. */
     static void onSpeed(int kmh) {
-        if (!Boolean.FALSE.equals(carOn) || lampOff) return;
+        if (yanOn || lampOff) return;
         fastCount = kmh >= 8 ? fastCount + 1 : 0;
-        if (fastCount >= 2) on("jazda – GPS " + kmh + " km/h");
+        if (fastCount >= 2) yanOn("jazda – GPS " + kmh + " km/h");
+    }
+
+    /** Telefon właśnie się połączył: powiedz mu, czy Yanosik ma działać (sprawdź światła na nowo). */
+    static void hello() {
+        String v = lampNow();
+        if ("0".equals(v)) {
+            if (yanOn) off("światła wyłączone (po połączeniu)");
+            return;
+        }
+        if (yanOn) {
+            RadioService.sendToPhone(J.obj("t", "car_on"));
+        } else if ("1".equals(v)) {
+            yanOn("światła włączone (po połączeniu)");
+        } else {
+            log("telefon połączony – światła zgaszone, Yanosik czeka");
+        }
+    }
+
+    /** Aktualny stan świateł czytany na nowo z ustawień (w czuwaniu radio mogło nie zgłosić zmiany). */
+    private static String lampNow() {
+        if (res != null) takeSnap(res, "system");
+        return snap.get("system:Headlamp");
     }
 
     static void start(final RadioService s) {
@@ -81,7 +106,7 @@ final class AccWatch {
                         || up.contains("OFF") || up.endsWith("SLEEP") || up.contains("FAST_BOOT_START")) {
                     off("sygnał " + a);
                 } else {
-                    on("sygnał " + a);
+                    wake("sygnał " + a);
                 }
             }
         }, f);
@@ -90,6 +115,7 @@ final class AccWatch {
         Handler h = new Handler(Looper.getMainLooper());
         lampH = h;
         final ContentResolver cr = s.getContentResolver();
+        res = cr;
         takeSnap(cr, "system");
         takeSnap(cr, "global");
         takeSnap(cr, "secure");
@@ -108,6 +134,8 @@ final class AccWatch {
         } catch (Exception e) {
             log("nie mogę obserwować ustawień: " + e.getMessage());
         }
+        // radio uruchomione przy włączonych światłach
+        if ("1".equals(snap.get("system:Headlamp"))) h.postDelayed(lampCheck, 3000);
     }
 
     private static void takeSnap(ContentResolver cr, String table) {
@@ -136,19 +164,21 @@ final class AccWatch {
                     }
                     if (k.equals("system:hasaccoff")) {
                         // ustawiane od razu po wyjęciu kluczyka (uśpienie radia jest dopiero ok. 44 s później)
-                        if ("1".equals(v)) off("wyjęty kluczyk – hasaccoff=1");
-                        else if ("0".equals(v)) on("kluczyk – hasaccoff=0");
+                        if ("1".equals(v)) {
+                            lampOff = false; // nowa jazda – GPS znów może włączyć Yanosika
+                            off("wyjęty kluczyk – hasaccoff=1");
+                        } else if ("0".equals(v)) wake("kluczyk – hasaccoff=0");
                     }
                     if (k.equals("global:airplane_mode_on")) {
                         // radio włącza tryb samolotowy przy zgaszeniu zapłonu
                         if ("1".equals(v)) off("tryb samolotowy");
-                        else on("tryb samolotowy wyłączony");
+                        else wake("tryb samolotowy wyłączony");
                     }
                     if (name.contains("acc") && !name.contains("hasacc") && !name.contains("access") && !name.contains("accel")
                             && !name.contains("account")) {
                         String lv = v.toLowerCase(Locale.ROOT);
                         if (lv.equals("0") || lv.equals("false") || lv.equals("off")) off("ustawienie " + k + "=" + v);
-                        else if (lv.equals("1") || lv.equals("true") || lv.equals("on")) on("ustawienie " + k + "=" + v);
+                        else if (lv.equals("1") || lv.equals("true") || lv.equals("on")) wake("ustawienie " + k + "=" + v);
                     }
                 }
             }
@@ -156,23 +186,45 @@ final class AccWatch {
         }
     }
 
+    /** Zgaszenie: zamknij Yanosika (każdy sygnał wystarczy). */
     private static void off(String why) {
-        if (Boolean.FALSE.equals(carOn)) return; // już zgaszone – nie powtarzaj
-        carOn = false;
-        lampOff = why.startsWith("światła");
+        if (why.startsWith("światła")) lampOff = true;
         fastCount = 0;
+        if (lampH != null && !why.startsWith("światła")) lampH.removeCallbacks(lampCheck);
+        if (Boolean.FALSE.equals(carOn) && !yanOn) return; // już zgaszone – nie powtarzaj
+        carOn = false;
+        yanOn = false;
         log("➡ ZGASZENIE (" + why + ") – zamykam Yanosika");
         RadioService.sendToPhone(J.obj("t", "car_off"));
     }
 
-    private static void on(String why) {
-        if (Boolean.TRUE.equals(carOn)) return; // już zapalone
+    /**
+     * Radio się obudziło (kluczyk, wyjście z czuwania). Yanosika NIE włączamy –
+     * czekamy na światła albo jazdę. Sprawdzamy tylko, czy światła już się palą.
+     */
+    private static void wake(String why) {
+        if (!Boolean.TRUE.equals(carOn)) {
+            carOn = true;
+            log("radio obudzone (" + why + ") – Yanosik czeka na światła");
+            RadioService rs = RadioService.instance;
+            if (rs != null) AutoStart.run(rs); // ekran: FM + Pulpit
+        }
+        if (lampH != null && !yanOn) {
+            lampH.removeCallbacks(lampCheck);
+            lampH.postDelayed(() -> {
+                lampNow();
+                lampCheck.run();
+            }, 3000);
+        }
+    }
+
+    /** Włącz Yanosika – tylko przy włączonych światłach albo podczas jazdy. */
+    private static void yanOn(String why) {
+        if (yanOn) return;
         carOn = true;
+        yanOn = true;
         lampOff = false;
         log("➡ WŁĄCZENIE (" + why + ") – włączam Yanosika");
-        RadioService rs = RadioService.instance;
-        // ekran przełączaj tylko przy wybudzeniu radia, nie w trakcie jazdy
-        if (rs != null && !why.startsWith("jazda") && !why.startsWith("światła")) AutoStart.run(rs);
         RadioService.sendToPhone(J.obj("t", "car_on"));
     }
 
