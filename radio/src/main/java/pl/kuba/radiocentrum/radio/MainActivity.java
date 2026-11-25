@@ -919,8 +919,9 @@ public class MainActivity extends Activity {
         left.addView(date);
 
         // dane jazdy zamiast rysunku auta
-        String[] labels = {"Prędkość", "Kierunek", "Temperatura", "Dystans trasy", "Czas jazdy", "Średnia",
-                "Maks.", "Światła", "Telefon"};
+        boolean can = Prefs.canOn(this);
+        String[] labels = {"Prędkość", can ? "Paliwo" : "Kierunek", "Temperatura", "Dystans trasy", "Czas jazdy", "Średnia",
+                can ? "Zasięg" : "Maks.", "Światła", "Telefon"};
         dataVals = new TextView[labels.length];
         LinearLayout gridData = new LinearLayout(this);
         gridData.setOrientation(LinearLayout.VERTICAL);
@@ -945,6 +946,12 @@ public class MainActivity extends Activity {
                 Ui.autoSize(val, 11, 24);
                 tile.addView(val, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
                 dataVals[idx] = val;
+                if (can && (idx == 1 || idx == 6)) {
+                    tile.setOnLongClickListener(v -> {
+                        toast(CanBus.info());
+                        return true;
+                    });
+                }
                 if (idx == 2) {
                     tile.setOnLongClickListener(v -> {
                         Pogoda.refresh();
@@ -1148,8 +1155,8 @@ public class MainActivity extends Activity {
                             Prefs.setCanOn(this, nw);
                             if (nw) CanBus.start(this);
                             else CanBus.stop();
-                            toast(nw ? "Dane z CAN włączone. Otwórz fabryczne „Dane auta” i sprawdź, czy nadal pokazuje paliwo."
-                                    : "Dane z CAN wyłączone");
+                            toast(nw ? "Dane z CAN włączone – Paliwo i Zasięg na Pulpicie" : "Dane z CAN wyłączone");
+                            recreate();
                         }),
                 o.btn("🔎 Podgląd CAN", 0xFF00838F, true, this::canView));
         o.row(o.btn("🔬 Sonda CAN – bezpieczna", 0xFF455A64, true, () -> CanProbe.run(this)));
@@ -1438,7 +1445,13 @@ public class MainActivity extends Activity {
         boolean gps = Fotoradary.last != null;
         dataVals[0].setText(gps ? Fotoradary.speedKmh + " km/h" : "brak GPS");
         float b = Fotoradary.bearing;
-        dataVals[1].setText(b < 0 ? "–" : "➤ " + DIRS[Math.round(b / 45f) % 8]);
+        boolean can = Prefs.canOn(this);
+        if (can) {
+            dataVals[1].setText(CanBus.fuelText());
+            dataVals[1].setTextColor(CanBus.fuelL >= 0 && CanBus.fuelL <= 8 ? 0xFFEF5350 : Ui.WHITE);
+        } else {
+            dataVals[1].setText(b < 0 ? "–" : "➤ " + DIRS[Math.round(b / 45f) % 8]);
+        }
         Pogoda.tick(this);
         dataVals[2].setText(Pogoda.text());
         double tc = Pogoda.tempC;
@@ -1449,7 +1462,7 @@ public class MainActivity extends Activity {
         dataVals[4].setText(min >= 60 ? (min / 60) + " h " + (min % 60) + " min" : min + " min");
         double hrs = Fotoradary.movingMs / 3600000.0;
         dataVals[5].setText(hrs > 0.01 ? Math.round(km / hrs) + " km/h" : "–");
-        dataVals[6].setText(Fotoradary.maxKmh > 0 ? Fotoradary.maxKmh + " km/h" : "–");
+        dataVals[6].setText(can ? CanBus.rangeText() : Fotoradary.maxKmh > 0 ? Fotoradary.maxKmh + " km/h" : "–");
         boolean on = LightSensor.isOn(this);
         dataVals[7].setText(on ? "💡 WŁ" : "wył.");
         dataVals[7].setTextColor(on ? 0xFFFFE57F : Ui.WHITE);

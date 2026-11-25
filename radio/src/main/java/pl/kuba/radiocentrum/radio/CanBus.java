@@ -38,7 +38,6 @@ final class CanBus {
     private static final Handler h = new Handler(Looper.getMainLooper());
     private static final byte[] buf = new byte[512];
     private static int bufLen;
-    private static long lastLog;
     private static IBinder svcRef;
     private static volatile boolean wanted;
     // podgląd surowych danych
@@ -180,7 +179,9 @@ final class CanBus {
         sb.append("Ostatnia paczka: ").append(lastChunk).append("\n\n");
         sb.append("Odczytane: paliwo ").append(fuelText()).append(", przebieg ")
                 .append(mileageKm < 0 ? "–" : mileageKm + " km").append(", temp. ")
-                .append(Double.isNaN(outTemp) ? "–" : String.format(Locale.US, "%.1f°C", outTemp)).append("\n\n");
+                .append(Double.isNaN(outTemp) ? "–" : String.format(Locale.US, "%.1f°C", outTemp))
+                .append(", obroty ").append(rpm < 0 ? "–" : rpm + "/min").append(", akumulator ")
+                .append(Double.isNaN(volts) ? "–" : String.format(Locale.US, "%.1f V", volts)).append("\n\n");
         sb.append("Ostatnia ramka każdego rodzaju (rodzaj: bajty):\n");
         if (lastByCmd.isEmpty()) sb.append("  brak – nic nie przyszło\n");
         for (java.util.Map.Entry<Integer, String> e : lastByCmd.entrySet()) {
@@ -189,33 +190,36 @@ final class CanBus {
         return sb.toString();
     }
 
+    static volatile int rpm = -1;
+    static volatile double volts = Double.NaN;
+
+    /**
+     * Ramka 0x41, podtyp 02 (sprawdzone z fabrycznym ekranem „car information”):
+     * 2E 41 0D | 02 | obroty[2] | prędkość[2] | napięcie×100[2] | temp×10[2, ze znakiem] | przebieg[3] | paliwo L | suma
+     */
     private static void frame(byte[] f) {
         int cmd = f[1] & 0xff;
         frames++;
         synchronized (CanBus.class) {
             lastByCmd.put(cmd, hex(f, f.length));
         }
-        if (cmd != 0x41 || f.length < 13) return;
-        int fuel = f[12] & 0xff;
-        int km = ((f[9] & 0xff) << 16) | ((f[10] & 0xff) << 8) | (f[11] & 0xff);
-        int raw = ((f[7] & 0xff) << 8) | (f[8] & 0xff);
-        double t = raw >= 0x8000 ? raw - 0x10000 : raw;
-        if (Math.abs(t) > 70) t = t / 10.0;
-        if (fuel > 0 && fuel < 120) fuelL = fuel;
-        if (km > 0) mileageKm = km;
+        if (cmd != 0x41 || f.length < 17 || (f[3] & 0xff) != 0x02) return;
+        int r = ((f[4] & 0xff) << 8) | (f[5] & 0xff);
+        int v = ((f[8] & 0xff) << 8) | (f[9] & 0xff);
+        int raw = ((f[10] & 0xff) << 8) | (f[11] & 0xff);
+        int km = ((f[12] & 0xff) << 16) | ((f[13] & 0xff) << 8) | (f[14] & 0xff);
+        int fuel = f[15] & 0xff;
+        double t = (raw >= 0x8000 ? raw - 0x10000 : raw) / 10.0;
+        if (r < 10000) rpm = r;
+        if (v > 500 && v < 2000) volts = v / 100.0;
+        if (fuel < 120) fuelL = fuel;
+        if (km > 0 && km < 2000000) mileageKm = km;
         if (t > -45 && t < 65) {
             outTemp = t;
             Pogoda.fromCan(t);
         }
         at = System.currentTimeMillis();
         learn(fuelL, mileageKm);
-        long now = System.currentTimeMillis();
-        if (now - lastLog > 120000) {
-            lastLog = now;
-            StringBuilder hex = new StringBuilder();
-            for (byte x : f) hex.append(String.format("%02X ", x & 0xff));
-            AccWatch.log("CAN 0x41: " + hex + "→ paliwo " + fuelL + " L, przebieg " + mileageKm + " km, temp " + t);
-        }
     }
 
     // ---------------------------------------------------------------- spalanie i zasięg
