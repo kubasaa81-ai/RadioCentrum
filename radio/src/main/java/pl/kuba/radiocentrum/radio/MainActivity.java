@@ -947,8 +947,9 @@ public class MainActivity extends Activity {
                 tile.addView(val, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
                 dataVals[idx] = val;
                 if (can && (idx == 1 || idx == 6)) {
+                    tile.setOnClickListener(v -> Paliwo.show(this));
                     tile.setOnLongClickListener(v -> {
-                        toast(CanBus.info());
+                        Paliwo.show(this);
                         return true;
                     });
                 }

@@ -102,7 +102,8 @@ final class Popup {
         }
         final String key = m.optString("key");
         final String speech = speech(m);
-        final boolean isCam = "Fotoradar".equals(appName) || "Policja".equals(appName) || "Uwaga".equals(appName);
+        final boolean isCam = "Fotoradar".equals(appName) || "Policja".equals(appName) || "Uwaga".equals(appName)
+                || "Paliwo".equals(appName);
         LinearLayout row = new LinearLayout(app);
         row.setOrientation(LinearLayout.HORIZONTAL);
         if (!isCam) row.addView(Ui.buttonFit(app, "🔊 Przeczytaj", Ui.BLUE, 18, v -> {
@@ -286,6 +287,60 @@ final class Popup {
             }
             h.removeCallbacks(alertHide);
             h.postDelayed(alertHide, 10000);
+        });
+    }
+
+    /** Duży znak „Mało paliwa” na środku z przyciskiem do najbliższej stacji. */
+    static void showFuel(Context c, int liters, String range, boolean urgent) {
+        app = c.getApplicationContext();
+        h.post(() -> {
+            beep(urgent ? "police" : "fuel");
+            if (!canDraw(app)) return;
+            hideAlert();
+            int accent = urgent ? Ui.RED : Ui.ORANGE;
+            LinearLayout card = card(accent);
+            card.setGravity(Gravity.CENTER_HORIZONTAL);
+            int p = Ui.dp(app, 20);
+            card.setPadding(p, Ui.dp(app, 14), p, Ui.dp(app, 16));
+            LinearLayout.LayoutParams full = new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+            TextView ic = Ui.text(app, "⛽", 52, Ui.WHITE, false);
+            ic.setGravity(Gravity.CENTER);
+            card.addView(ic, full);
+            TextView lb = Ui.text(app, urgent ? "PALIWO NA WYCZERPANIU" : "MAŁO PALIWA", 30, accent, true);
+            lb.setGravity(Gravity.CENTER);
+            lb.setMaxLines(2);
+            card.addView(lb, new LinearLayout.LayoutParams(full));
+            TextView d = Ui.text(app, "W baku " + liters + " L · zasięg " + range, 22, Ui.WHITE, true);
+            d.setGravity(Gravity.CENTER);
+            d.setMaxLines(2);
+            card.addView(d, new LinearLayout.LayoutParams(full));
+            LinearLayout row = new LinearLayout(app);
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            row.addView(Ui.buttonFit(app, "⛽ Najbliższa stacja", Ui.GREEN, 20, v -> {
+                hideAlert();
+                Paliwo.stations(app);
+            }), Ui.lp(0, Ui.dp(app, 60), 1, app, 6));
+            row.addView(Ui.buttonFit(app, "✖ Zamknij", Ui.SLATE, 20, v -> hideAlert()),
+                    Ui.lp(0, Ui.dp(app, 60), 1, app, 6));
+            LinearLayout.LayoutParams rp = new LinearLayout.LayoutParams(full);
+            rp.topMargin = Ui.dp(app, 12);
+            card.addView(row, rp);
+
+            WindowManager.LayoutParams wp = params(0);
+            int w = app.getResources().getDisplayMetrics().widthPixels;
+            wp.width = Math.min((int) (w * 0.62f), Ui.dp(app, 600));
+            wp.gravity = Gravity.CENTER;
+            wp.y = 0;
+            try {
+                wm().addView(card, wp);
+                alertView = card;
+            } catch (Exception e) {
+                alertView = null;
+                return;
+            }
+            h.removeCallbacks(alertHide);
+            h.postDelayed(alertHide, 30000);
         });
     }
 

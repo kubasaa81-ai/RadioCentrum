@@ -59,6 +59,7 @@ final class AccWatch {
     private static ContentResolver res;
     /** Światła: reaguj dopiero, gdy stan utrzyma się 3 s (przy kluczyku sygnał chwilę „mruga”). */
     private static final Runnable lampCheck = () -> {
+        if (engineKnown()) return; // jest CAN – decyduje praca silnika, nie światła
         String v = snap.get("system:Headlamp");
         if ("1".equals(v)) yanOn("światła włączone");
         else if ("0".equals(v) && yanOn) off("światła wyłączone");
@@ -66,13 +67,51 @@ final class AccWatch {
 
     /** Prędkość z GPS: jeśli auto jedzie, a Yanosik nie działa (np. jazda bez świateł), włącz go. */
     static void onSpeed(int kmh) {
-        if (yanOn || lampOff) return;
+        if (yanOn || lampOff || engineKnown()) return;
         fastCount = kmh >= 8 ? fastCount + 1 : 0;
         if (fastCount >= 2) yanOn("jazda – GPS " + kmh + " km/h");
     }
 
+    // ------------------------------------------------------------------ silnik (CAN – obroty)
+
+    private static long runSince, zeroSince, rpmAt;
+    private static volatile int lastRpm = -1;
+
+    /** Mamy świeże obroty z CAN (ostatnie 15 s) – wtedy one decydują o Yanosiku. */
+    static boolean engineKnown() {
+        return Prefs.canOnCached && lastRpm >= 0 && System.currentTimeMillis() - rpmAt < 15000;
+    }
+
+    /** Obroty z CAN: silnik pracuje (≥ 300/min przez 2 s) → Yanosik; 0 przez 10 s → zamknij. */
+    static void onRpm(int rpm) {
+        if (rpm < 0) return;
+        long now = System.currentTimeMillis();
+        lastRpm = rpm;
+        rpmAt = now;
+        if (rpm >= 300) {
+            zeroSince = 0;
+            if (runSince == 0) runSince = now;
+            if (!yanOn && now - runSince >= 2000) yanOn("silnik pracuje – " + rpm + " obr/min");
+        } else if (rpm == 0) {
+            runSince = 0;
+            if (zeroSince == 0) zeroSince = now;
+            if (yanOn && now - zeroSince >= 10000) off("silnik zgaszony (CAN)");
+        }
+    }
+
     /** Telefon właśnie się połączył: powiedz mu, czy Yanosik ma działać (sprawdź światła na nowo). */
     static void hello() {
+        if (engineKnown()) {
+            if (lastRpm >= 300) {
+                if (yanOn) RadioService.sendToPhone(J.obj("t", "car_on"));
+                else yanOn("silnik pracuje (po połączeniu)");
+            } else if (yanOn) {
+                off("silnik zgaszony (po połączeniu)");
+            } else {
+                log("telefon połączony – silnik zgaszony, Yanosik czeka");
+            }
+            return;
+        }
         String v = lampNow();
         if ("0".equals(v)) {
             if (yanOn) off("światła wyłączone (po połączeniu)");

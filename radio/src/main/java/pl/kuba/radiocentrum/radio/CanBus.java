@@ -220,6 +220,11 @@ final class CanBus {
         }
         at = System.currentTimeMillis();
         learn(fuelL, mileageKm);
+        final int rr = r < 10000 ? r : -1, ff = fuelL, kk = mileageKm;
+        h.post(() -> {
+            AccWatch.onRpm(rr);              // silnik pracuje / zgaszony → Yanosik
+            Paliwo.onFuel(app, ff, kk, rr);  // rezerwa, tankowania
+        });
     }
 
     // ---------------------------------------------------------------- spalanie i zasięg

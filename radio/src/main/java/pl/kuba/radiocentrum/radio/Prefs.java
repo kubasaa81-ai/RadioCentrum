@@ -90,11 +90,16 @@ final class Prefs {
     }
 
     /** Odbiór danych z CAN (druga lista słuchaczy – obok fabrycznej aplikacji). */
+    static volatile boolean canOnCached;
+
     static boolean canOn(Context c) {
-        return c.getSharedPreferences("rc", Context.MODE_PRIVATE).getBoolean("canOn", false);
+        boolean v = c.getSharedPreferences("rc", Context.MODE_PRIVATE).getBoolean("canOn", false);
+        canOnCached = v;
+        return v;
     }
 
     static void setCanOn(Context c, boolean v) {
+        canOnCached = v;
         c.getSharedPreferences("rc", Context.MODE_PRIVATE).edit().putBoolean("canOn", v).apply();
     }
 }
