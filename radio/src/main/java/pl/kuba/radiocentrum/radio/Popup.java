@@ -183,13 +183,18 @@ final class Popup {
     static void showAlert(Context c, String kind, String text, int distM) {
         app = c.getApplicationContext();
         h.post(() -> {
+            if ("shift".equals(kind) && alertView != null && !"shift".equals(alertKind)) return; // nie zasłaniaj ważniejszego
             beep(kind);
             if (!canDraw(app)) return;
             hideAlert();
             String low = text == null ? "" : text.toLowerCase(java.util.Locale.ROOT);
             String icon, label;
             int accent;
-            if ("ice".equals(kind)) {
+            if ("shift".equals(kind)) {
+                icon = "⬆";
+                label = "ZMIEŃ BIEG NA WYŻSZY";
+                accent = 0xFF26A69A;
+            } else if ("ice".equals(kind)) {
                 icon = "❄";
                 label = "MOŻLIWA ŚLISKOŚĆ";
                 accent = 0xFF29B6F6;
@@ -224,12 +229,12 @@ final class Popup {
                         : "UWAGA NA DRODZE";
                 accent = Ui.RED;
             }
-            boolean road = !"hand".equals(kind) && !kind.startsWith("batt") && !"ice".equals(kind);
+            boolean road = !"hand".equals(kind) && !kind.startsWith("batt") && !"ice".equals(kind) && !"shift".equals(kind);
             int lim = road ? limitFrom(low) : 0;
             if (lim <= 0 && "cam".equals(kind) && Fotoradary.nearestM >= 0 && Fotoradary.nearestM < 1500) {
                 lim = Fotoradary.nearestLim;
             }
-            int speed = kind.startsWith("batt") || "ice".equals(kind) ? 0 : Math.max(0, Auto.speed());
+            int speed = kind.startsWith("batt") || "ice".equals(kind) || "shift".equals(kind) ? 0 : Math.max(0, Auto.speed());
 
             LinearLayout card = card(accent);
             card.setGravity(Gravity.CENTER_HORIZONTAL);
@@ -245,6 +250,12 @@ final class Popup {
             lb.setMaxLines(2);
             card.addView(lb, new LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+            if ("shift".equals(kind)) {
+                TextView d = Ui.text(app, text + " obr/min", 26, Ui.WHITE, true);
+                d.setGravity(Gravity.CENTER);
+                card.addView(d, new LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+            }
             if ("ice".equals(kind)) {
                 TextView d = Ui.text(app, "Na zewnątrz " + text + " – na mostach i w cieniu może być ślisko",
                         20, Ui.WHITE, false);
@@ -314,7 +325,7 @@ final class Popup {
                 return;
             }
             h.removeCallbacks(alertHide);
-            h.postDelayed(alertHide, 10000);
+            h.postDelayed(alertHide, "shift".equals(kind) ? 3000 : 10000); // podpowiedź biegu znika szybko
         });
     }
 
@@ -403,7 +414,11 @@ final class Popup {
                         android.media.AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK);
                 int rate = 44100;
                 java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
-                if ("police".equals(kind)) {
+                if ("shift".equals(kind)) {
+                    tone(out, rate, 1200, 120); // krótkie „pik-pik” – podpowiedź biegu
+                    tone(out, rate, 0, 70);
+                    tone(out, rate, 1600, 120);
+                } else if ("police".equals(kind)) {
                     for (int i = 0; i < 3; i++) {
                         tone(out, rate, 1400, 180);
                         tone(out, rate, 0, 90);

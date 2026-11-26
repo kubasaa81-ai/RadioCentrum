@@ -391,12 +391,10 @@ final class Auto {
     static volatile int shiftCount, maxRpmSeen;
     static volatile String shiftLast = "jeszcze nie było";
 
-    /** Sygnał + głos z głośników radia. */
+    /** Znak na środku ekranu + krótki sygnał (bez czytania na głos). */
     static void sayShift(Context c) {
-        Popup.beepOnly(c, "shift");
-        new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
-            if (!Mowa.speakRadio(c, "Zmień bieg na wyższy")) Mowa.init(c);
-        }, 900);
+        int r = prevRpm > 0 ? prevRpm : Prefs.shiftRpm(c);
+        Popup.showAlert(c, "shift", String.valueOf(r), -1);
     }
 
     static String shiftInfo(Context c) {
@@ -404,6 +402,6 @@ final class Auto {
         return "Podpowiedź biegu: " + (lim <= 0 ? "wyłączona" : "próg " + lim + " obr/min")
                 + ", było razy: " + shiftCount + " (" + shiftLast + ")"
                 + ", najwyższe obroty od startu: " + maxRpmSeen
-                + ", głos radia: " + (Mowa.radioCanSpeak() ? "gotowy" : "NIE gotowy");
+                ;
     }
 }

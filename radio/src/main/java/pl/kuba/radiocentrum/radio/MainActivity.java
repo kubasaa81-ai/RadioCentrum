@@ -1131,7 +1131,7 @@ public class MainActivity extends Activity {
     private String shiftLabel() {
         int r = Prefs.shiftRpm(this);
         return r <= 0 ? "🗣 Podpowiedź zmiany biegu: wyłączona"
-                : "🗣 „Zmień bieg na wyższy” przy " + r + " obr/min (kliknij, by zmienić)";
+                : "⬆ „Zmień bieg na wyższy” przy " + r + " obr/min (kliknij, by zmienić)";
     }
 
     /** Surowe dane z CAN – do porównania z fabrycznym ekranem i ustawienia właściwych bajtów. */
@@ -1893,7 +1893,7 @@ public class MainActivity extends Activity {
             shT.setText(shiftLabel());
         });
         col.addView(shT);
-        col.addView(Ui.button(this, "🔊 Test: „Zmień bieg na wyższy”", 0xFF00695C, 18, v -> Auto.sayShift(this)));
+        col.addView(Ui.button(this, "🔊 Test: znak „Zmień bieg na wyższy”", 0xFF00695C, 18, v -> Auto.sayShift(this)));
         LinearLayout ra = new LinearLayout(this);
         ra.setOrientation(LinearLayout.HORIZONTAL);
         ra.addView(aaT, Ui.lp(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1, this, 6));
