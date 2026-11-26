@@ -236,6 +236,7 @@ final class AccWatch {
         log("➡ ZGASZENIE (" + why + ") – zamykam Yanosika");
         RadioService rs0 = RadioService.instance;
         if (rs0 != null && CanBus.mileageKm > 0) Auto.sendState(rs0, true); // miejsce postoju na telefon
+        if (rs0 != null && why.contains("kluczyk")) Auto.engineStopped(rs0); // kluczyk wyjęty → nowa trasa przy następnym starcie
         RadioService.sendToPhone(J.obj("t", "car_off"));
     }
 

@@ -33,6 +33,7 @@ final class Auto {
 
     static void init(Context c) {
         ctx = c.getApplicationContext();
+        Fotoradary.loadTrip(ctx);
         if (scale < 0) scale = ctx.getSharedPreferences("rc_auto", Context.MODE_PRIVATE).getFloat("scale", 0.01f);
     }
 
@@ -50,7 +51,6 @@ final class Auto {
         long dt = prevAt == 0 ? 0 : now - prevAt;
         prevAt = now;
         if (kmh >= 3) {
-            if (lastMoveAt != 0 && now - lastMoveAt > 2L * 3600 * 1000) Fotoradary.resetTrip(); // nowa trasa po 2 h postoju
             lastMoveAt = now;
         }
         if (dt <= 0 || dt > 10000) return;
@@ -113,7 +113,10 @@ final class Auto {
         long now = System.currentTimeMillis();
         month(c);
         if (rpm < 500) {
-            if (runSince != 0 && rpm == 0) sendState(c, true); // silnik zgaszony → miejsce postoju na telefon
+            if (runSince != 0 && rpm == 0) {
+                sendState(c, true); // silnik zgaszony → miejsce postoju na telefon
+                engineStopped(c);
+            }
             idleEnd(c, now);
             runSince = 0;
             lowSince = highSince = 0;
@@ -126,6 +129,11 @@ final class Auto {
         if (runSince == 0) {
             runSince = now;
             serviceCheck(c);
+            // pierwsze uruchomienie po zgaszeniu silnika → nowa trasa od zera
+            if (c != null && c.getSharedPreferences("rc_trip", Context.MODE_PRIVATE).getBoolean("pending", false)) {
+                c.getSharedPreferences("rc_trip", Context.MODE_PRIVATE).edit().putBoolean("pending", false).apply();
+                Fotoradary.resetTrip();
+            }
         }
         iceCheck(c);
         idleTick(c, now);
@@ -367,5 +375,12 @@ final class Auto {
             shiftSaidAt = now;
             if (!Mowa.speakRadio(c, "Zmień bieg na wyższy")) Popup.beepOnly(c, "shift");
         }
+    }
+
+    /** Silnik zgaszony (obroty 0 albo wyjęty kluczyk): trasa zostaje na ekranie, wyzeruje się przy następnym uruchomieniu. */
+    static void engineStopped(Context c) {
+        if (c == null) return;
+        Fotoradary.saveTrip(true);
+        c.getSharedPreferences("rc_trip", Context.MODE_PRIVATE).edit().putBoolean("pending", true).apply();
     }
 }

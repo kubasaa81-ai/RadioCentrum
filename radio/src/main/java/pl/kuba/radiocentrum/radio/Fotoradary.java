@@ -51,10 +51,34 @@ final class Fotoradary {
     private static Location prev;
     private static long lastMoveAt;
 
+    private static Context tripCtx;
+    private static long tripSavedAt;
+
+    /** Zeruj trasę (przytrzymanie kafelka albo pierwsze uruchomienie silnika po zgaszeniu). */
     static void resetTrip() {
         tripM = 0;
         movingMs = 0;
         maxKmh = 0;
+        saveTrip(true);
+    }
+
+    /** Trasa trzymana na stałe – nie znika, gdy system zamknie aplikację w tle. */
+    static void loadTrip(Context c) {
+        if (tripCtx != null) return; // już wczytana
+        tripCtx = c.getApplicationContext();
+        android.content.SharedPreferences p = tripCtx.getSharedPreferences("rc_trip", Context.MODE_PRIVATE);
+        tripM = p.getFloat("m", 0);
+        movingMs = p.getLong("ms", 0);
+        maxKmh = p.getInt("max", 0);
+    }
+
+    static void saveTrip(boolean now) {
+        if (tripCtx == null) return;
+        long t = System.currentTimeMillis();
+        if (!now && t - tripSavedAt < 20000) return;
+        tripSavedAt = t;
+        tripCtx.getSharedPreferences("rc_trip", Context.MODE_PRIVATE).edit()
+                .putFloat("m", (float) tripM).putLong("ms", movingMs).putInt("max", maxKmh).apply();
     }
 
     private static final Set<Long> alerted = new HashSet<>();
@@ -72,6 +96,7 @@ final class Fotoradary {
             return;
         }
         final Context app = c.getApplicationContext();
+        if (tripCtx == null) loadTrip(app);
         load(app);
         LocationManager lm = (LocationManager) app.getSystemService(Context.LOCATION_SERVICE);
         if (lm == null) return;
@@ -116,7 +141,6 @@ final class Fotoradary {
         if (l.hasBearing() && speedKmh >= 5) bearing = l.getBearing();
         if (l.hasAltitude()) altitude = l.getAltitude();
         if (speedKmh >= 3) {
-            if (lastMoveAt != 0 && now - lastMoveAt > 2L * 3600 * 1000) resetTrip(); // nowa trasa po 2 h postoju
             lastMoveAt = now;
         }
         if (prev != null && LocationManager.GPS_PROVIDER.equals(l.getProvider())) {
@@ -125,6 +149,7 @@ final class Fotoradary {
             if (!Auto.canSpeedFresh() && dt > 0 && dt < 10000 && speedKmh >= 3 && (!l.hasAccuracy() || l.getAccuracy() < 30)) {
                 tripM += prev.distanceTo(l);
                 movingMs += dt;
+                saveTrip(false);
             }
         }
         if (!Auto.canSpeedFresh() && speedKmh > maxKmh && speedKmh < 250) maxKmh = speedKmh;
