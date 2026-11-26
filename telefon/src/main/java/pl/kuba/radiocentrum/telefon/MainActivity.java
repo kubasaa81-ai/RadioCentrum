@@ -39,13 +39,15 @@ import java.util.Locale;
 
 public class MainActivity extends Activity {
 
-    private TextView status, checks, codeView;
+    private TextView status, checks, codeView, dlText;
+    private android.widget.ProgressBar dlBar;
+    private LinearLayout dlBox;
     private final Handler h = new Handler(Looper.getMainLooper());
     private final Runnable tick = new Runnable() {
         @Override
         public void run() {
             refresh();
-            h.postDelayed(this, 1000);
+            h.postDelayed(this, 500);
         }
     };
 
@@ -85,6 +87,18 @@ public class MainActivity extends Activity {
                 v -> safeStart(new Intent(Settings.ACTION_BLUETOOTH_SETTINGS))), lp(10));
         col.addView(button("Wyślij ponownie wszystko do radia", 0xFF3949AB, v -> resend()), lp(10));
         col.addView(button("📥 Pobierz pliki z radia (Pobrane)", 0xFF6D4C41, v -> radioFiles()), lp(10));
+        dlBox = new LinearLayout(this);
+        dlBox.setOrientation(LinearLayout.VERTICAL);
+        dlBox.setPadding(p, dp(10), p, dp(12));
+        dlBox.setBackground(round(0xFF1E2A33, 14));
+        dlText = text("", 16, 0xFFFFFFFF, true);
+        dlBox.addView(dlText);
+        dlBar = new android.widget.ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
+        dlBar.setMax(100);
+        dlBar.setProgressTintList(android.content.res.ColorStateList.valueOf(0xFF66BB6A));
+        dlBox.addView(dlBar, lp(6));
+        dlBox.setVisibility(View.GONE);
+        col.addView(dlBox, lp(6));
         col.addView(button("📤 Wyślij plik do radia (Pobrane)", 0xFF00838F, v -> pickFileForRadio()), lp(10));
         col.addView(button("Ustawienia aplikacji (ograniczone ustawienia)", 0xFF546E7A, v -> openAppDetails()), lp(10));
         yanButton = button("", 0xFFC62828, v -> {
@@ -192,6 +206,21 @@ public class MainActivity extends Activity {
     // ------------------------------------------------------------------ stan
 
     private void refresh() {
+        int st0 = PhoneService.dlState;
+        if (dlBox != null) {
+            dlBox.setVisibility(st0 == 0 ? View.GONE : View.VISIBLE);
+            if (st0 != 0) {
+                long size = PhoneService.dlSize, got = PhoneService.dlGot;
+                int pct = size > 0 ? (int) Math.min(100, got * 100 / size) : 0;
+                dlBar.setIndeterminate(st0 == 1 && size <= 0);
+                dlBar.setProgress(st0 == 2 ? 100 : pct);
+                String sz = String.format(Locale.US, "%.1f / %.1f MB", got / 1048576.0, size / 1048576.0);
+                dlText.setText(st0 == 1 ? "📥 Pobieram " + pct + "%  ·  " + sz + "\n" + PhoneService.dlName
+                        : st0 == 2 ? "✅ Pobrano: " + PhoneService.dlName + " (w Pobranych)"
+                        : "❌ Nie udało się: " + PhoneService.dlName + " (" + sz + ") – spróbuj ponownie");
+                dlText.setTextColor(st0 == 3 ? 0xFFEF5350 : st0 == 2 ? 0xFF81C784 : 0xFFFFFFFF);
+            }
+        }
         PhoneService s = PhoneService.instance;
         boolean conn = s != null && s.isConnected();
         String st = s == null ? "Usługa nie działa – zrób krok 2" : PhoneService.status;

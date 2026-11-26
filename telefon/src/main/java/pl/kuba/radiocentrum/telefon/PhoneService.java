@@ -685,7 +685,49 @@ public class PhoneService extends NotificationListenerService implements Link.Ha
         return mt == null ? "application/octet-stream" : mt;
     }
 
+    // ------------------------------------------------------------------ postęp pobierania (pasek w aplikacji i powiadomienie)
+
+    static volatile String dlName;
+    static volatile long dlSize, dlGot;
+    /** 0 = nic, 1 = trwa, 2 = gotowe, 3 = błąd. */
+    static volatile int dlState;
+    private int dlLastPct = -1;
+
+    private void dlNotify() {
+        try {
+            android.app.NotificationManager nm = (android.app.NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+            if (nm == null) return;
+            if (Build.VERSION.SDK_INT >= 26) {
+                nm.createNotificationChannel(new android.app.NotificationChannel("rc_dl", "Pobieranie z radia",
+                        android.app.NotificationManager.IMPORTANCE_LOW));
+            }
+            android.app.Notification.Builder b = Build.VERSION.SDK_INT >= 26
+                    ? new android.app.Notification.Builder(this, "rc_dl") : new android.app.Notification.Builder(this);
+            int pct = dlSize > 0 ? (int) Math.min(100, dlGot * 100 / dlSize) : 0;
+            if (dlState == 1) {
+                b.setSmallIcon(android.R.drawable.stat_sys_download)
+                        .setContentTitle("📥 Pobieram z radia " + pct + "%")
+                        .setContentText(dlName)
+                        .setProgress(100, pct, dlSize <= 0)
+                        .setOngoing(true);
+            } else {
+                b.setSmallIcon(dlState == 2 ? android.R.drawable.stat_sys_download_done : android.R.drawable.stat_notify_error)
+                        .setContentTitle(dlState == 2 ? "✅ Pobrano z radia" : "❌ Nie udało się pobrać")
+                        .setContentText(dlName + (dlState == 2 ? " – jest w Pobranych" : ""))
+                        .setAutoCancel(true);
+            }
+            nm.notify(4712, b.build());
+        } catch (Exception ignored) {
+        }
+    }
+
     private void fileBegin(String name, long size) {
+        dlName = name;
+        dlSize = size;
+        dlGot = 0;
+        dlState = 1;
+        dlLastPct = -1;
+        dlNotify();
         try {
             java.io.OutputStream old = incoming.remove(name);
             if (old != null) old.close();
@@ -701,9 +743,20 @@ public class PhoneService extends NotificationListenerService implements Link.Ha
         java.io.OutputStream out = incoming.get(name);
         if (out == null) return;
         try {
-            out.write(android.util.Base64.decode(b64, android.util.Base64.NO_WRAP));
+            byte[] data = android.util.Base64.decode(b64, android.util.Base64.NO_WRAP);
+            out.write(data);
+            if (name.equals(dlName)) {
+                dlGot += data.length;
+                int pct = dlSize > 0 ? (int) (dlGot * 100 / dlSize) : 0;
+                if (pct / 5 != dlLastPct / 5) {
+                    dlLastPct = pct;
+                    dlNotify();
+                }
+            }
         } catch (Exception e) {
             incoming.remove(name);
+            dlState = 3;
+            dlNotify();
             phoneToast("Błąd zapisu pliku " + name);
         }
     }
@@ -716,8 +769,14 @@ public class PhoneService extends NotificationListenerService implements Link.Ha
             out.close();
         } catch (Exception ignored) {
         }
+        if (name.equals(dlName)) {
+            dlState = err != null || (dlSize > 0 && dlGot < dlSize) ? 3 : 2;
+            dlNotify();
+        }
         if (err != null) {
             phoneToast("Nie udało się pobrać " + name + " (" + err + ")");
+        } else if (dlState == 3 && name.equals(dlName)) {
+            phoneToast("❌ Plik " + name + " przyszedł niepełny (" + dlGot / 1024 + " z " + dlSize / 1024 + " kB) – spróbuj jeszcze raz");
         } else {
             phoneToast("✅ Zapisano w telefonie: Pobrane/" + name);
             send(J.obj("t", "toast", "text", "✅ Plik " + name + " jest w telefonie (Pobrane)"));
