@@ -101,4 +101,15 @@ final class Mowa {
         String route = mode == 3 ? "media" : "call";
         return RadioService.sendToPhone(J.obj("t", "speak", "text", text, "route", route));
     }
+
+    /** Krótki komunikat zawsze z głośników radia (bez przełączania na telefon). */
+    @SuppressWarnings("deprecation")
+    static boolean speakRadio(Context c, String text) {
+        if (!ready || tts == null) return false;
+        if (am != null) {
+            am.requestAudioFocus(focus, AudioManager.STREAM_MUSIC, AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK);
+        }
+        tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, "rc-shift");
+        return true;
+    }
 }

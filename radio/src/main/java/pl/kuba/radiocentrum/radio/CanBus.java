@@ -39,7 +39,7 @@ final class CanBus {
             if (!wanted || !registered) return;
             // gdy fabryczny ekran jest otwarty, on już pyta – nie dublujemy
             if (System.currentTimeMillis() - at > 2500) request();
-            h.postDelayed(this, 2000);
+            h.postDelayed(this, rpm > 0 ? 700 : 2000); // przy pracującym silniku częściej – do podpowiedzi biegu
         }
     };
 
@@ -384,6 +384,7 @@ final class CanBus {
             AccWatch.onRpm(rr);              // silnik pracuje / zgaszony → Yanosik
             Paliwo.onFuel(app, ff, kk, rr);  // rezerwa, tankowania
             Auto.onEngine(app, rr, volts);   // akumulator, przypomnienie o serwisie
+            Auto.onShift(app, rr);           // „zmień bieg na wyższy”
         });
     }
 

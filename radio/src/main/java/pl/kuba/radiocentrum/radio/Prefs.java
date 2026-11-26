@@ -102,4 +102,15 @@ final class Prefs {
         canOnCached = v;
         c.getSharedPreferences("rc", Context.MODE_PRIVATE).edit().putBoolean("canOn", v).apply();
     }
+
+    /** Podpowiedź „zmień bieg na wyższy” po przekroczeniu progu obrotów (0 = wyłączona). */
+    static final int[] SHIFT_RPM = {0, 1800, 2000, 2200, 2500};
+
+    static int shiftRpm(Context c) {
+        return c.getSharedPreferences("rc", Context.MODE_PRIVATE).getInt("shiftRpm", 2000);
+    }
+
+    static void setShiftRpm(Context c, int v) {
+        c.getSharedPreferences("rc", Context.MODE_PRIVATE).edit().putInt("shiftRpm", v).apply();
+    }
 }

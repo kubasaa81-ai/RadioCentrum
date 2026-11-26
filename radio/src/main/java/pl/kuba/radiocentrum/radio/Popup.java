@@ -457,6 +457,12 @@ final class Popup {
         });
     }
 
+    /** Sam sygnał dźwiękowy, bez okna. */
+    static void beepOnly(Context c, String kind) {
+        app = c.getApplicationContext();
+        h.post(() -> beep(kind));
+    }
+
     static void hideAlert() {
         h.removeCallbacks(alertHide);
         alertKind = "";

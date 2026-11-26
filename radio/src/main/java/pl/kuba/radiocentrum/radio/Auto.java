@@ -343,4 +343,29 @@ final class Auto {
         } catch (Exception ignored) {
         }
     }
+
+    // ------------------------------------------------------------------ podpowiedź zmiany biegu
+
+    private static int prevRpm = -1;
+    private static long shiftSaidAt;
+    private static boolean armed = true;
+
+    /**
+     * Obroty rosną i przekraczają próg (domyślnie 2000) podczas jazdy → głos „Zmień bieg na wyższy”.
+     * Ponownie dopiero, gdy obroty spadną poniżej progu (zmiana biegu), najwyżej co 8 s.
+     */
+    static void onShift(Context c, int rpm) {
+        if (c == null || rpm < 0) return;
+        int lim = Prefs.shiftRpm(c);
+        int prev = prevRpm;
+        prevRpm = rpm;
+        if (lim <= 0) return;
+        if (rpm < lim - 200) armed = true; // zmieniono bieg / zwolniono – można znowu podpowiedzieć
+        long now = System.currentTimeMillis();
+        if (armed && prev >= 0 && prev < lim && rpm >= lim && speed() >= 5 && now - shiftSaidAt > 8000) {
+            armed = false;
+            shiftSaidAt = now;
+            if (!Mowa.speakRadio(c, "Zmień bieg na wyższy")) Popup.beepOnly(c, "shift");
+        }
+    }
 }

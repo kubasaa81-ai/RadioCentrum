@@ -1128,6 +1128,12 @@ public class MainActivity extends Activity {
         }
     }
 
+    private String shiftLabel() {
+        int r = Prefs.shiftRpm(this);
+        return r <= 0 ? "🗣 Podpowiedź zmiany biegu: wyłączona"
+                : "🗣 „Zmień bieg na wyższy” przy " + r + " obr/min (kliknij, by zmienić)";
+    }
+
     /** Surowe dane z CAN – do porównania z fabrycznym ekranem i ustawienia właściwych bajtów. */
     private void canView() {
         Okno o = new Okno(this, "🔎 Podgląd CAN", CanBus.dump()
@@ -1876,6 +1882,16 @@ public class MainActivity extends Activity {
             fmT.setText(fmLabel());
         });
         col.addView(fmT);
+        final Button shT = Ui.button(this, shiftLabel(), 0xFF00897B, 18, null);
+        shT.setOnClickListener(v -> {
+            int cur = Prefs.shiftRpm(this), next = Prefs.SHIFT_RPM[0];
+            for (int i = 0; i < Prefs.SHIFT_RPM.length; i++) {
+                if (Prefs.SHIFT_RPM[i] == cur) next = Prefs.SHIFT_RPM[(i + 1) % Prefs.SHIFT_RPM.length];
+            }
+            Prefs.setShiftRpm(this, next);
+            shT.setText(shiftLabel());
+        });
+        col.addView(shT);
         LinearLayout ra = new LinearLayout(this);
         ra.setOrientation(LinearLayout.HORIZONTAL);
         ra.addView(aaT, Ui.lp(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1, this, 6));
