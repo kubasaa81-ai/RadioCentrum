@@ -25,6 +25,41 @@ final class CanBus {
     private static final String CB = "android.os.ICanbusInterface";
     private static final int TX_SET_OTHER = 5;       // setCanbusInterface_other (druga lista)
     private static final int TX_REMOVE_OTHER = 6;    // removeCanbusInterface_other
+    private static final int TX_SET_VALUE = 1;       // setValue(byte[]) – wysyłka do modułu CAN
+    /**
+     * Zapytanie „podaj dane auta” (paliwo, obroty, przebieg, temp.) – dokładnie to samo, co fabryczna
+     * aplikacja wysyła co 1,5 s przy otwartym ekranie „car information”: 2E 90 02 41 02 + suma.
+     * To tylko prośba o dane do modułu CAN, nic nie zmienia w aucie.
+     */
+    private static final byte[] REQ_CARINFO = {0x2E, (byte) 0x90, 0x02, 0x41, 0x02, 0x2A};
+    static volatile int requests;
+    private static final Runnable poll = new Runnable() {
+        @Override
+        public void run() {
+            if (!wanted || !registered) return;
+            // gdy fabryczny ekran jest otwarty, on już pyta – nie dublujemy
+            if (System.currentTimeMillis() - at > 2500) request();
+            h.postDelayed(this, 2000);
+        }
+    };
+
+    private static void request() {
+        IBinder svc = svcRef;
+        if (svc == null) return;
+        Parcel d = Parcel.obtain(), r = Parcel.obtain();
+        try {
+            d.writeInterfaceToken(SVC);
+            d.writeByteArray(REQ_CARINFO);
+            svc.transact(TX_SET_VALUE, d, r, 0);
+            r.readException();
+            requests++;
+        } catch (Throwable e) {
+            status = "zapytanie o dane nie poszło: " + e.getClass().getSimpleName();
+        } finally {
+            d.recycle();
+            r.recycle();
+        }
+    }
     private static final int TX_ON_RESULT = 1;       // ICanbusInterface.onResult(byte[], int)
 
     static volatile int fuelL = -1;
@@ -118,6 +153,8 @@ final class CanBus {
             registered = true;
             svcRef = svc;
             status = "połączono z CAN (druga lista – obok fabrycznej)";
+            h.removeCallbacks(poll);
+            h.postDelayed(poll, 1500);
             try {
                 svc.linkToDeath(() -> {
                     registered = false;
@@ -175,7 +212,10 @@ final class CanBus {
     static synchronized String dump() {
         StringBuilder sb = new StringBuilder();
         sb.append("Stan: ").append(status).append("\n");
-        sb.append("Odebrane paczki: ").append(chunks).append(", ramki: ").append(frames).append("\n");
+        sb.append("Odebrane paczki: ").append(chunks).append(", ramki: ").append(frames)
+                .append(", zapytania o dane: ").append(requests).append("\n");
+        long age = at == 0 ? -1 : (System.currentTimeMillis() - at) / 1000;
+        sb.append("Dane auta (paliwo, obroty): ").append(age < 0 ? "jeszcze nie przyszły" : "sprzed " + age + " s").append("\n");
         sb.append("Ostatnia paczka: ").append(lastChunk).append("\n\n");
         sb.append("Odczytane: paliwo ").append(fuelText()).append(", przebieg ")
                 .append(mileageKm < 0 ? "–" : mileageKm + " km").append(", temp. ")
