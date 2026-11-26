@@ -38,8 +38,8 @@ final class CanBus {
         public void run() {
             if (!wanted || !registered) return;
             // gdy fabryczny ekran jest otwarty, on już pyta – nie dublujemy
-            if (System.currentTimeMillis() - at > 2500) request();
-            h.postDelayed(this, rpm > 0 ? 700 : 2000); // przy pracującym silniku częściej – do podpowiedzi biegu
+            if (System.currentTimeMillis() - at > 300) request(); // obroty na bieżąco (ok. 2–3 razy na sekundę)
+            h.postDelayed(this, rpm > 0 ? 400 : 2000); // przy pracującym silniku częściej – do podpowiedzi biegu
         }
     };
 

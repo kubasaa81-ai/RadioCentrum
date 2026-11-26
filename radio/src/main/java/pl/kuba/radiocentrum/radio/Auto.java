@@ -357,6 +357,7 @@ final class Auto {
     private static int prevRpm = -1;
     private static long shiftSaidAt;
     private static boolean armed = true;
+    private static int peakRpm;
 
     /**
      * Obroty rosną i przekraczają próg (domyślnie 2000) podczas jazdy → głos „Zmień bieg na wyższy”.
@@ -369,11 +370,16 @@ final class Auto {
         prevRpm = rpm;
         if (rpm > maxRpmSeen) maxRpmSeen = rpm;
         if (lim <= 0) return;
-        if (rpm < lim - 200) armed = true; // zmieniono bieg / zwolniono – można znowu podpowiedzieć
+        // zmiana biegu = obroty spadły o 300+ od szczytu albo poniżej progu → można znowu podpowiedzieć
+        if (!armed) {
+            if (rpm > peakRpm) peakRpm = rpm;
+            if (rpm < lim || rpm <= peakRpm - 300) armed = true;
+        }
         long now = System.currentTimeMillis();
         // przejście przez próg (także gdy między odczytami obroty skoczyły wysoko)
-        if (armed && rpm >= lim && speed() >= 5 && now - shiftSaidAt > 8000) {
+        if (armed && rpm >= lim && speed() >= 5 && now - shiftSaidAt > 3000) {
             armed = false;
+            peakRpm = rpm;
             shiftSaidAt = now;
             shiftCount++;
             shiftLast = "przy " + rpm + " obr/min, " + speed() + " km/h (poprzedni odczyt " + prev + ")";
