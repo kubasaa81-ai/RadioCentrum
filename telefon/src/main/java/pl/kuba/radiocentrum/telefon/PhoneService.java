@@ -504,6 +504,9 @@ public class PhoneService extends NotificationListenerService implements Link.Ha
                     }
                 });
                 break;
+            case "car_state":
+                MojeAuto.onState(this, m);
+                break;
             case "weather":
                 final double wLat = m.optDouble("lat"), wLon = m.optDouble("lon");
                 new Thread(() -> sendWeather(wLat, wLon), "rc-weather").start();

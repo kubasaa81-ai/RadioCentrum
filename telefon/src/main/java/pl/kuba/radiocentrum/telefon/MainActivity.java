@@ -74,7 +74,9 @@ public class MainActivity extends Activity {
         checks.setLineSpacing(0, 1.25f);
         col.addView(checks, lp(12));
 
-        col.addView(button("1. Nadaj uprawnienia", 0xFF1E88E5, v -> askPermissions()), lp(14));
+        col.addView(button("🚗 Moje auto (paliwo, parking, terminy)", 0xFF2E7D32,
+                v -> startActivity(new Intent(this, MojeAuto.class))), lp(14));
+        col.addView(button("1. Nadaj uprawnienia", 0xFF1E88E5, v -> askPermissions()), lp(10));
         col.addView(button("2. Dostęp do powiadomień", 0xFF8E24AA, v -> openNotifAccess()), lp(10));
         col.addView(button("3. Bateria bez ograniczeń", 0xFFFB8C00, v -> askBattery()), lp(10));
         col.addView(button("4. Wybierz radio (Bluetooth)", 0xFF43A047, v -> chooseRadio()), lp(10));
@@ -220,6 +222,7 @@ public class MainActivity extends Activity {
                 Manifest.permission.RECORD_AUDIO,
                 Manifest.permission.ANSWER_PHONE_CALLS));
         if (Build.VERSION.SDK_INT >= 31) l.add(Manifest.permission.BLUETOOTH_CONNECT);
+        if (Build.VERSION.SDK_INT >= 33) l.add(Manifest.permission.POST_NOTIFICATIONS);
         return l.toArray(new String[0]);
     }
 

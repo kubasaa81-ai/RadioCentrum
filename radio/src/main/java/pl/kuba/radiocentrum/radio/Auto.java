@@ -111,16 +111,25 @@ final class Auto {
     /** Napięcie przy pracującym silniku: < 12,8 V lub > 15,2 V przez 30 s → ostrzeżenie (raz na jazdę). */
     static void onEngine(Context c, int rpm, double volts) {
         long now = System.currentTimeMillis();
+        month(c);
         if (rpm < 500) {
+            if (runSince != 0 && rpm == 0) sendState(c, true); // silnik zgaszony → miejsce postoju na telefon
+            idleEnd(c, now);
             runSince = 0;
             lowSince = highSince = 0;
-            if (rpm == 0) battWarned = false; // silnik zgaszony – następna jazda może ostrzec znowu
+            if (rpm == 0) {
+                battWarned = false; // silnik zgaszony – następna jazda może ostrzec znowu
+                iceWarned = false;
+            }
             return;
         }
         if (runSince == 0) {
             runSince = now;
             serviceCheck(c);
         }
+        iceCheck(c);
+        idleTick(c, now);
+        if (now - sentAt > 60000) sendState(c, false);
         if (Double.isNaN(volts) || now - runSince < 60000) return; // minuta po rozruchu na ustabilizowanie
         lowSince = volts < 12.8 ? (lowSince == 0 ? now : lowSince) : 0;
         highSince = volts > 15.2 ? (highSince == 0 ? now : highSince) : 0;
@@ -231,6 +240,107 @@ final class Auto {
             android.widget.Toast.makeText(a, "Zapisano: " + serviceText(a), android.widget.Toast.LENGTH_LONG).show();
         } catch (Exception ex) {
             android.widget.Toast.makeText(a, "Wpisz same cyfry", android.widget.Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    // ------------------------------------------------------------------ śliskość
+
+    private static boolean iceWarned;
+
+    /** Temperatura z czujnika auta ≤ +3°C → niebieski znak „możliwa śliskość” (raz na jazdę). */
+    private static void iceCheck(Context c) {
+        double t = CanBus.outTemp;
+        if (iceWarned || Double.isNaN(t) || t > 3) return;
+        iceWarned = true;
+        Popup.showAlert(c, "ice", String.format(Locale.US, "%.1f°C", t), -1);
+    }
+
+    // ------------------------------------------------------------------ postój na pracującym silniku
+
+    private static long idleSince;
+    private static final double IDLE_LPH = 0.9; // ok. 0,9 l/h na wolnych obrotach
+
+    private static void idleTick(Context c, long now) {
+        if (speed() < 3) {
+            if (idleSince == 0) idleSince = now;
+        } else {
+            idleEnd(c, now);
+        }
+    }
+
+    private static void idleEnd(Context c, long now) {
+        if (idleSince == 0) return;
+        long ms = now - idleSince;
+        idleSince = 0;
+        if (ms < 5 * 60000L || c == null) return;
+        try {
+            SharedPreferences p = c.getSharedPreferences("rc_auto", Context.MODE_PRIVATE);
+            org.json.JSONArray a = new org.json.JSONArray(p.getString("idles", "[]"));
+            org.json.JSONObject e = new org.json.JSONObject();
+            e.put("t", now - ms);
+            e.put("min", Math.round(ms / 60000.0));
+            e.put("l", Math.round(ms / 3600000.0 * IDLE_LPH * 100) / 100.0);
+            a.put(e);
+            while (a.length() > 40) a.remove(0);
+            p.edit().putString("idles", a.toString()).apply();
+        } catch (Exception ignored) {
+        }
+    }
+
+    // ------------------------------------------------------------------ kilometry w miesiącach
+
+    private static void month(Context c) {
+        int km = CanBus.mileageKm;
+        if (c == null || km <= 0) return;
+        String key = new java.text.SimpleDateFormat("yyyy-MM", Locale.ROOT).format(new java.util.Date());
+        try {
+            SharedPreferences p = c.getSharedPreferences("rc_auto", Context.MODE_PRIVATE);
+            org.json.JSONObject m = new org.json.JSONObject(p.getString("months", "{}"));
+            org.json.JSONArray v = m.optJSONArray(key);
+            if (v == null) {
+                v = new org.json.JSONArray();
+                v.put(km);
+                v.put(km);
+            } else if (v.optInt(1) == km) {
+                return;
+            } else {
+                v.put(1, km);
+            }
+            m.put(key, v);
+            p.edit().putString("months", m.toString()).apply();
+        } catch (Exception ignored) {
+        }
+    }
+
+    // ------------------------------------------------------------------ stan auta → telefon
+
+    private static long sentAt;
+
+    /** Wyślij na telefon stan auta (paliwo, przebieg, akumulator, serwis, tankowania, postoje, miejsce). */
+    static void sendState(Context c, boolean parked) {
+        if (c == null) return;
+        sentAt = System.currentTimeMillis();
+        try {
+            SharedPreferences p = c.getSharedPreferences("rc_auto", Context.MODE_PRIVATE);
+            org.json.JSONObject m = J.obj("t", "car_state", "ts", sentAt, "parked", parked,
+                    "fuel", CanBus.fuelL, "range", CanBus.rangeText(), "km", CanBus.mileageKm,
+                    "cons", Math.round(CanBus.consumption() * 10) / 10.0,
+                    "consLearned", CanBus.consLearned(),
+                    "batt", battText(), "temp", Double.isNaN(CanBus.outTemp) ? null : CanBus.outTemp,
+                    "service", serviceText(c));
+            int left = serviceLeft(c);
+            if (left != Integer.MIN_VALUE) m.put("serviceLeft", left);
+            m.put("refuels", Paliwo.log());
+            m.put("idles", new org.json.JSONArray(p.getString("idles", "[]")));
+            m.put("months", new org.json.JSONObject(p.getString("months", "{}")));
+            android.location.Location l = Fotoradary.last;
+            if (l != null) {
+                m.put("lat", l.getLatitude());
+                m.put("lon", l.getLongitude());
+                m.put("locTs", l.getTime());
+            }
+            RadioService.sendToPhone(m);
+        } catch (Exception ignored) {
         }
     }
 }
