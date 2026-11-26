@@ -37,7 +37,9 @@ final class Pogoda {
     static String text() {
         if (Double.isNaN(tempC)) return "–";
         long age = System.currentTimeMillis() - at;
-        String t = Math.round(tempC) + "°C";
+        // z auta – dokładnie jak na liczniku (co 0,5°C), z internetu – w pełnych stopniach
+        String t = fromCar ? String.format(new java.util.Locale("pl", "PL"), "%.1f°C", tempC)
+                : Math.round(tempC) + "°C";
         if (!fromCar && age > 90 * 60000L) t = "~" + t;
         return t;
     }
