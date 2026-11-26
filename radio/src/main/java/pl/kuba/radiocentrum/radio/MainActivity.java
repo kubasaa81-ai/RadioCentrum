@@ -1181,7 +1181,8 @@ public class MainActivity extends Activity {
                             recreate();
                         }),
                 o.btn("🔎 Podgląd CAN", 0xFF00838F, true, this::canView));
-        o.row(o.btn("🔬 Sonda CAN – bezpieczna", 0xFF455A64, true, () -> CanProbe.run(this)));
+        o.row(o.btn("🔬 Sonda CAN – bezpieczna", 0xFF455A64, true, () -> CanProbe.run(this)),
+                o.btn("📻 Zapisz aplikację radia FM", 0xFFAD1457, true, this::exportRadioApks));
         o.row(o.btn("🎙 Test mikrofonu (nagraj i odsłuchaj)", Ui.GREEN, true,
                         () -> openComp("com.android.soundrecorder", "com.android.soundrecorder.SoundRecorder")),
                 o.btn("📶 Ustawienia Bluetooth radia", Ui.BLUE, true,
@@ -1962,9 +1963,21 @@ public class MainActivity extends Activity {
     /** Zbiera diagnostykę, zapisuje w radiu (Pobrane) i wysyła do telefonu (Pobrane w telefonie). */
     /** Kopiuje pliki APK aplikacji CAN do Pobranych – do analizy, jak odczytać paliwo / zasięg. */
     private void exportCanApks() {
+        exportApks("CAN-", new String[]{"com.xygala.canbus", "com.example.tmedia", "com.xygala.pvcanset"});
+    }
+
+    /** Fabryczne aplikacje radia FM – do podejrzenia, jak sterują tunerem. */
+    private void exportRadioApks() {
+        java.util.List<String> l = new java.util.ArrayList<>(java.util.Arrays.asList(
+                "com.acloud.stub.localradio", "com.android.fmradio", "com.acloud.stub.extradio"));
+        android.content.ComponentName cn = AutoStart.radioApp(this);
+        if (cn != null && !l.contains(cn.getPackageName())) l.add(0, cn.getPackageName());
+        exportApks("FM-", l.toArray(new String[0]));
+    }
+
+    private void exportApks(final String prefix, final String[] pkgs) {
         toast("Zapisuję… chwilkę");
         new Thread(() -> {
-            String[] pkgs = {"com.xygala.canbus", "com.example.tmedia", "com.xygala.pvcanset"};
             StringBuilder sb = new StringBuilder();
             java.io.File dir = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS);
             dir.mkdirs();
@@ -1976,7 +1989,7 @@ public class MainActivity extends Activity {
                     if (ai.splitSourceDirs != null) java.util.Collections.addAll(src, ai.splitSourceDirs);
                     int n = 0;
                     for (String f : src) {
-                        java.io.File out = new java.io.File(dir, "CAN-" + p + (n == 0 ? "" : "-" + n) + ".apk");
+                        java.io.File out = new java.io.File(dir, prefix + p + (n == 0 ? "" : "-" + n) + ".apk");
                         try (java.io.InputStream in = new java.io.FileInputStream(f);
                              java.io.OutputStream os = new java.io.FileOutputStream(out)) {
                             byte[] b = new byte[65536];
