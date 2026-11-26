@@ -21,14 +21,75 @@ final class Auto {
 
     // ------------------------------------------------------------------ prędkość
 
-    /** Prędkość z auta w km/h (surowa wartość z CAN / 100), -1 = brak. */
+    /** Prędkość z auta w km/h (surowa wartość z CAN × skala), -1 = brak. */
     static volatile double canKmh = -1;
     static volatile long canKmhAt;
+    /** km/h na jednostkę surową – startowo 0,01, potem sama się dopasowuje do przebiegu z licznika. */
+    private static double scale = -1;
+    private static long prevAt, lastMoveAt;
+    private static int calKm0 = -1;
+    private static double calM;
+    private static Context ctx;
 
+    static void init(Context c) {
+        ctx = c.getApplicationContext();
+        if (scale < 0) scale = ctx.getSharedPreferences("rc_auto", Context.MODE_PRIVATE).getFloat("scale", 0.01f);
+    }
+
+    /**
+     * Prędkość z CAN → komputer trasy (dystans, czas jazdy, maks.) liczony z auta, nie z GPS.
+     * Co 10 km porównujemy policzony dystans z przebiegiem licznika i poprawiamy skalę.
+     */
     static void onSpeedRaw(int raw) {
         if (raw < 0 || raw > 30000) return;
-        canKmh = raw / 100.0;
-        canKmhAt = System.currentTimeMillis();
+        if (scale < 0) scale = 0.01;
+        long now = System.currentTimeMillis();
+        double kmh = raw * scale;
+        canKmh = kmh;
+        canKmhAt = now;
+        long dt = prevAt == 0 ? 0 : now - prevAt;
+        prevAt = now;
+        if (kmh >= 3) {
+            if (lastMoveAt != 0 && now - lastMoveAt > 2L * 3600 * 1000) Fotoradary.resetTrip(); // nowa trasa po 2 h postoju
+            lastMoveAt = now;
+        }
+        if (dt <= 0 || dt > 10000) return;
+        double m = kmh / 3.6 * dt / 1000.0;
+        if (kmh >= 3) {
+            Fotoradary.tripM += m;
+            Fotoradary.movingMs += dt;
+            int k = (int) Math.round(kmh);
+            if (k > Fotoradary.maxKmh && k < 250) Fotoradary.maxKmh = k;
+        }
+        calibrate(m);
+    }
+
+    private static void calibrate(double m) {
+        int km = CanBus.mileageKm;
+        if (km <= 0) return;
+        if (calKm0 < 0 || km < calKm0) {
+            calKm0 = km;
+            calM = 0;
+            return;
+        }
+        calM += m;
+        int dKm = km - calKm0;
+        if (dKm < 10) return;
+        if (calM > 100) {
+            double ratio = dKm * 1000.0 / calM;
+            if (ratio > 0.2 && ratio < 5) {
+                // mała różnica – dopasuj łagodnie; duża (zła jednostka) – od razu
+                scale *= (ratio > 0.8 && ratio < 1.25) ? 1 + (ratio - 1) * 0.3 : ratio;
+                if (ctx != null) ctx.getSharedPreferences("rc_auto", Context.MODE_PRIVATE)
+                        .edit().putFloat("scale", (float) scale).apply();
+            }
+        }
+        calKm0 = km;
+        calM = 0;
+    }
+
+    static String scaleText() {
+        return String.format(Locale.US, "%.4f", scale < 0 ? 0.01 : scale);
     }
 
     /** Czy mamy świeżą prędkość z auta (ostatnie 5 s). */

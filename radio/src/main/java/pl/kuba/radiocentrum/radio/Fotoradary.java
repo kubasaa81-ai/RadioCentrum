@@ -121,12 +121,13 @@ final class Fotoradary {
         }
         if (prev != null && LocationManager.GPS_PROVIDER.equals(l.getProvider())) {
             long dt = now - prev.getTime();
-            if (dt > 0 && dt < 10000 && speedKmh >= 3 && (!l.hasAccuracy() || l.getAccuracy() < 30)) {
+            // gdy jest prędkość z auta (CAN), trasę liczy Auto – GPS tylko jako zapas
+            if (!Auto.canSpeedFresh() && dt > 0 && dt < 10000 && speedKmh >= 3 && (!l.hasAccuracy() || l.getAccuracy() < 30)) {
                 tripM += prev.distanceTo(l);
                 movingMs += dt;
             }
         }
-        if (speedKmh > maxKmh && speedKmh < 250) maxKmh = speedKmh;
+        if (!Auto.canSpeedFresh() && speedKmh > maxKmh && speedKmh < 250) maxKmh = speedKmh;
         if (LocationManager.GPS_PROVIDER.equals(l.getProvider())) prev = l;
         if (!fetching && (cams.isEmpty() || System.currentTimeMillis() - savedAt > 7L * 24 * 3600 * 1000)
                 && dist(l.getLatitude(), l.getLongitude(), fetchLat, fetchLon) > 20000) {

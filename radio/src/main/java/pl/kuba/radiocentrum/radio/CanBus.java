@@ -108,6 +108,7 @@ final class CanBus {
 
     static void start(Context c) {
         app = c.getApplicationContext();
+        Auto.init(app);
         wanted = true;
         h.post(CanBus::register);
     }
@@ -223,6 +224,7 @@ final class CanBus {
                 .append(", obroty ").append(rpm < 0 ? "–" : rpm + "/min").append(", akumulator ")
                 .append(Double.isNaN(volts) ? "–" : String.format(Locale.US, "%.1f V", volts))
                 .append(", prędkość z auta ").append(Auto.canKmh < 0 ? "–" : String.format(Locale.US, "%.1f km/h", Auto.canKmh))
+                .append(" [skala ").append(Auto.scaleText()).append("]")
                 .append(" (GPS ").append(Fotoradary.last != null ? Fotoradary.speedKmh + " km/h" : "–").append(")")
                 .append(", ręczny ").append(handbrakeUp == null ? "–" : handbrakeUp ? "ZACIĄGNIĘTY" : "opuszczony")
                 .append("\n\n");
