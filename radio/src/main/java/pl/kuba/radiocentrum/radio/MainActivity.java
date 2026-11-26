@@ -975,6 +975,21 @@ public class MainActivity extends Activity {
         TextView hintTrip = Ui.text(this, "Przytrzymaj „Dystans trasy”, aby wyzerować", 12, 0xFF78909C, false);
         hintTrip.setGravity(Gravity.CENTER);
         left.addView(hintTrip);
+        if (FmRadio.installed(this)) {
+            // pasek radia FM: szukanie stacji bez otwierania fabrycznej aplikacji
+            LinearLayout fm = new LinearLayout(this);
+            fm.setOrientation(LinearLayout.HORIZONTAL);
+            fm.addView(Ui.buttonFit(this, "⏮", 0xFF5E35B1, 22, v -> FmRadio.prev(this)),
+                    Ui.lp(0, Ui.dp(this, 52), 1, this, 3));
+            fm.addView(Ui.buttonFit(this, "📻 Radio FM", 0xFFE65100, 19, v -> FmRadio.open(this)),
+                    Ui.lp(0, Ui.dp(this, 52), 2, this, 3));
+            fm.addView(Ui.buttonFit(this, "⏭", 0xFF5E35B1, 22, v -> FmRadio.next(this)),
+                    Ui.lp(0, Ui.dp(this, 52), 1, this, 3));
+            LinearLayout.LayoutParams fp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT);
+            fp.topMargin = Ui.dp(this, 4);
+            left.addView(fm, fp);
+        }
         homeStatus = Ui.text(this, "", 17, Ui.WHITE, true);
         homeStatus.setPadding(0, Ui.dp(this, 6), 0, 0);
         left.addView(homeStatus);
