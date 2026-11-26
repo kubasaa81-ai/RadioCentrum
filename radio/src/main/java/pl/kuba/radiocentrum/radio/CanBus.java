@@ -44,12 +44,16 @@ final class CanBus {
     };
 
     private static void request() {
+        send(REQ_CARINFO);
+    }
+
+    private static void send(byte[] q) {
         IBinder svc = svcRef;
         if (svc == null) return;
         Parcel d = Parcel.obtain(), r = Parcel.obtain();
         try {
             d.writeInterfaceToken(SVC);
-            d.writeByteArray(REQ_CARINFO);
+            d.writeByteArray(q);
             svc.transact(TX_SET_VALUE, d, r, 0);
             r.readException();
             requests++;
@@ -210,6 +214,44 @@ final class CanBus {
     }
 
     /** Podgląd do porównania z fabrycznym ekranem „Informacje o aucie”. */
+    // ---------------------------------------------------------------- szukanie zmian (np. klima)
+
+    private static java.util.Map<Integer, String> snap;
+    private static final java.util.TreeMap<Integer, String> newKinds = new java.util.TreeMap<>();
+    private static final java.util.TreeMap<Integer, Integer> changedCnt = new java.util.TreeMap<>();
+    private static final java.util.TreeMap<Integer, String> changedLast = new java.util.TreeMap<>();
+    private static long snapAt;
+
+    /** Zapamiętaj wszystkie ramki – potem dump() pokaże, co się zmieniło albo pojawiło nowego. */
+    static synchronized void startSearch() {
+        snap = new java.util.HashMap<>(lastByCmd);
+        newKinds.clear();
+        changedCnt.clear();
+        changedLast.clear();
+        snapAt = System.currentTimeMillis();
+    }
+
+    static synchronized void stopSearch() {
+        snap = null;
+    }
+
+    static boolean searching() {
+        return snap != null;
+    }
+
+    private static String keyName(int k) {
+        return k > 0xff ? String.format("0x%02X/%02X", k >> 8, k & 0xff) : String.format("0x%02X", k);
+    }
+
+    /** Zapytanie modułu CAN o dany rodzaj danych (2E 90 02 cmd sub + suma) – tylko prośba o dane. */
+    static void ask(final int cmd, final int sub) {
+        h.post(() -> {
+            byte[] q = {0x2E, (byte) 0x90, 0x02, (byte) cmd, (byte) sub, 0};
+            q[5] = (byte) ((0x90 + 0x02 + cmd + sub) & 0xff ^ 0xff);
+            send(q);
+        });
+    }
+
     static synchronized String dump() {
         StringBuilder sb = new StringBuilder();
         sb.append("Stan: ").append(status).append("\n");
@@ -228,6 +270,26 @@ final class CanBus {
                 .append(" (GPS ").append(Fotoradary.last != null ? Fotoradary.speedKmh + " km/h" : "–").append(")")
                 .append(", ręczny ").append(handbrakeUp == null ? "–" : handbrakeUp ? "ZACIĄGNIĘTY" : "opuszczony")
                 .append("\n\n");
+        if (snap != null) {
+            sb.append("🔍 SZUKANIE ZMIAN – od ").append((System.currentTimeMillis() - snapAt) / 1000).append(" s\n");
+            sb.append("NOWE rodzaje ramek:\n");
+            if (newKinds.isEmpty()) sb.append("  brak\n");
+            for (java.util.Map.Entry<Integer, String> e : newKinds.entrySet()) {
+                sb.append("  ★ ").append(keyName(e.getKey())).append(": ").append(e.getValue()).append("\n");
+            }
+            sb.append("ZMIENIONE (bez paliwa/obrotów 0x41/02):\n");
+            int shown = 0;
+            for (java.util.Map.Entry<Integer, Integer> e : changedCnt.entrySet()) {
+                int k = e.getKey();
+                if (k == 0x4102) continue;
+                shown++;
+                sb.append("  ").append(keyName(k)).append(" ×").append(e.getValue()).append("\n")
+                        .append("     było: ").append(snap.get(k)).append("\n")
+                        .append("     jest: ").append(changedLast.get(k)).append("\n");
+            }
+            if (shown == 0) sb.append("  brak\n");
+            sb.append("\n");
+        }
         sb.append("Ostatnia ramka każdego rodzaju (rodzaj: bajty):\n");
         if (lastByCmd.isEmpty()) sb.append("  brak – nic nie przyszło\n");
         for (java.util.Map.Entry<Integer, String> e : lastByCmd.entrySet()) {
@@ -271,7 +333,17 @@ final class CanBus {
         synchronized (CanBus.class) {
             // 0x41 ma podtypy (01 = stany: ręczny itd., 02 = silnik/paliwo) – trzymamy osobno
             int key = cmd == 0x41 && f.length > 3 ? 0x4100 | (f[3] & 0xff) : cmd;
-            lastByCmd.put(key, hex(f, f.length));
+            String hx = hex(f, f.length);
+            lastByCmd.put(key, hx);
+            if (snap != null) {
+                String was = snap.get(key);
+                if (was == null) newKinds.put(key, hx);
+                else if (!was.equals(hx)) {
+                    Integer n = changedCnt.get(key);
+                    changedCnt.put(key, n == null ? 1 : n + 1);
+                    changedLast.put(key, hx);
+                }
+            }
         }
         if (cmd == 0x41 && f.length >= 6 && (f[3] & 0xff) == 0x01) {
             // sprawdzone w aucie: bit 0x20 = 1 → ręczny opuszczony, 0 → zaciągnięty

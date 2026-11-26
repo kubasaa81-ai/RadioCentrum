@@ -1131,9 +1131,24 @@ public class MainActivity extends Activity {
     /** Surowe dane z CAN – do porównania z fabrycznym ekranem i ustawienia właściwych bajtów. */
     private void canView() {
         Okno o = new Okno(this, "🔎 Podgląd CAN", CanBus.dump()
-                + "\nZrób zdjęcie tego okna i zdjęcie fabrycznego ekranu „Dane auta” (paliwo, przebieg, temperatura) – wyślij oba w czacie.");
+                + "\nZrób zdjęcie tego okna i wyślij w czacie.");
         o.row(o.btn("🔄 Odśwież", Ui.BLUE, true, this::canView),
                 o.btn("🚙 Fabryczne Dane auta", 0xFF2E7D32, true, () -> openPkg("com.xygala.canbus")));
+        o.row(CanBus.searching()
+                        ? o.btn("⏹ Zakończ szukanie", Ui.RED, true, () -> {
+                            CanBus.stopSearch();
+                            canView();
+                        })
+                        : o.btn("🔍 Szukaj zmian (klima)", 0xFF6A1B9A, true, () -> {
+                            CanBus.startSearch();
+                            toast("Zapamiętano. Teraz pokręć klimą (temperatura, nawiew, AC), potem kliknij Odśwież.");
+                            canView();
+                        }),
+                o.btn("❄ Zapytaj o klimę", 0xFF0277BD, true, () -> {
+                    CanBus.ask(0x21, 0x00);
+                    CanBus.ask(0x23, 0x00);
+                    toast("Wysłano zapytanie o dane klimy – kliknij Odśwież za 2 s");
+                }));
         o.cancel("✖ Zamknij");
         o.show();
     }
