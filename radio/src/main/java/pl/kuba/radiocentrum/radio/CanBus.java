@@ -290,9 +290,16 @@ final class CanBus {
         int fuel = f[15] & 0xff;
         double t = (raw >= 0x8000 ? raw - 0x10000 : raw) / 10.0;
         if (r < 10000) rpm = r;
+        // zaraz po włączeniu moduł przez chwilę podaje zera (paliwo 0 L, przebieg 0) – takie ramki pomijamy
+        boolean valid = fuel > 0 && fuel < 120 && km > 0 && km < 2000000;
+        if (!valid) {
+            final int r0 = r < 10000 ? r : -1;
+            h.post(() -> AccWatch.onRpm(r0));
+            return;
+        }
         if (v > 500 && v < 2000) volts = v / 100.0;
-        if (fuel < 120) fuelL = fuel;
-        if (km > 0 && km < 2000000) mileageKm = km;
+        fuelL = fuel;
+        mileageKm = km;
         if (t > -45 && t < 65) {
             outTemp = t;
             Pogoda.fromCan(t);

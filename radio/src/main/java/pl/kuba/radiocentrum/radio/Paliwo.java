@@ -35,16 +35,19 @@ final class Paliwo {
     }
 
     /** Wołane przy każdej ramce z paliwem (z wątku usługi CAN). */
+    private static boolean cleaned;
+
     static synchronized void onFuel(Context c, int fuel, int km, int rpm) {
-        if (c == null || fuel < 0 || km <= 0) return;
+        if (c == null || fuel <= 0 || km <= 0) return;
         app = c.getApplicationContext();
+        if (!cleaned) cleanup();
         // poziom „stabilny” = ta sama wartość 3 razy z rzędu (paliwo chlupie w baku)
         if (fuel == stableVal) stableCnt++;
         else {
             stableVal = fuel;
             stableCnt = 1;
         }
-        if (stableCnt < 3) return;
+        if (stableCnt < 5) return;
 
         SharedPreferences sp = p();
         int low = sp.getInt("low", -1);
@@ -98,6 +101,21 @@ final class Paliwo {
         Popup.showNotif(app, J.obj("t", "notif", "key", "fuel", "app", "Paliwo",
                 "title", "⛽ Zatankowano ok. " + (after - before) + " L",
                 "text", "W baku " + after + " L · przebieg " + km + " km. Zapisane w dzienniku tankowań."));
+    }
+
+    /** Usuń błędne „tankowania od 0 L” (zerowe odczyty zaraz po włączeniu – poprawione w wersji 64). */
+    private static void cleanup() {
+        cleaned = true;
+        SharedPreferences sp = p();
+        JSONArray l = log(), ok = new JSONArray();
+        for (int i = 0; i < l.length(); i++) {
+            JSONObject e = l.optJSONObject(i);
+            if (e != null && e.optInt("before") > 0) ok.put(e);
+        }
+        SharedPreferences.Editor ed = sp.edit();
+        if (ok.length() != l.length()) ed.putString("log", ok.toString());
+        if (sp.getInt("low", -1) == 0) ed.remove("low").remove("lowKm");
+        ed.apply();
     }
 
     static JSONArray log() {
