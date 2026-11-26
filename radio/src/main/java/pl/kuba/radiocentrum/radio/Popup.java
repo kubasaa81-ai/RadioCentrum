@@ -189,7 +189,11 @@ final class Popup {
             String low = text == null ? "" : text.toLowerCase(java.util.Locale.ROOT);
             String icon, label;
             int accent;
-            if ("police".equals(kind)) {
+            if ("hand".equals(kind)) {
+                icon = "🅿";
+                label = "ZACIĄGNIĘTY RĘCZNY!";
+                accent = Ui.RED;
+            } else if ("police".equals(kind)) {
                 icon = "🚓";
                 label = low.matches(".*(nieoznakow).*") ? "NIEOZNAKOWANA POLICJA"
                         : low.matches(".*(patrol|radiowóz|radiowoz).*") && !low.contains("kontrol") ? "PATROL POLICJI"
@@ -212,7 +216,7 @@ final class Popup {
                         : "UWAGA NA DRODZE";
                 accent = Ui.RED;
             }
-            int lim = limitFrom(low);
+            int lim = "hand".equals(kind) ? 0 : limitFrom(low);
             if (lim <= 0 && "cam".equals(kind) && Fotoradary.nearestM >= 0 && Fotoradary.nearestM < 1500) {
                 lim = Fotoradary.nearestLim;
             }
@@ -281,6 +285,7 @@ final class Popup {
             try {
                 wm().addView(card, wp);
                 alertView = card;
+                alertKind = kind;
             } catch (Exception e) {
                 alertView = null;
                 return;
@@ -420,8 +425,18 @@ final class Popup {
         }
     }
 
+    private static String alertKind = "";
+
+    /** Schowaj znak, jeśli to ostrzeżenie danego rodzaju (np. ręczny został opuszczony). */
+    static void hideAlertIf(String kind) {
+        h.post(() -> {
+            if (alertView != null && kind.equals(alertKind)) hideAlert();
+        });
+    }
+
     static void hideAlert() {
         h.removeCallbacks(alertHide);
+        alertKind = "";
         if (alertView != null) {
             try {
                 wm().removeView(alertView);

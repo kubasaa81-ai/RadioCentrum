@@ -181,16 +181,40 @@ final class CanBus {
                 .append(mileageKm < 0 ? "–" : mileageKm + " km").append(", temp. ")
                 .append(Double.isNaN(outTemp) ? "–" : String.format(Locale.US, "%.1f°C", outTemp))
                 .append(", obroty ").append(rpm < 0 ? "–" : rpm + "/min").append(", akumulator ")
-                .append(Double.isNaN(volts) ? "–" : String.format(Locale.US, "%.1f V", volts)).append("\n\n");
+                .append(Double.isNaN(volts) ? "–" : String.format(Locale.US, "%.1f V", volts))
+                .append(", ręczny ").append(handbrakeUp == null ? "–" : handbrakeUp ? "ZACIĄGNIĘTY" : "opuszczony")
+                .append("\n\n");
         sb.append("Ostatnia ramka każdego rodzaju (rodzaj: bajty):\n");
         if (lastByCmd.isEmpty()) sb.append("  brak – nic nie przyszło\n");
         for (java.util.Map.Entry<Integer, String> e : lastByCmd.entrySet()) {
-            sb.append(String.format("0x%02X: ", e.getKey())).append(e.getValue()).append("\n");
+            int k = e.getKey();
+            sb.append(k > 0xff ? String.format("0x%02X/%02X: ", k >> 8, k & 0xff) : String.format("0x%02X: ", k))
+                    .append(e.getValue()).append("\n");
         }
         return sb.toString();
     }
 
     static volatile int rpm = -1;
+    static volatile Boolean handbrakeUp;
+    static volatile int speedRaw = -1;
+    private static int hbCount;
+    private static boolean hbWarned;
+
+    /** Ruszasz z zaciągniętym ręcznym → duży znak i sygnał (raz, do opuszczenia ręcznego). */
+    private static void checkHandbrake() {
+        if (!Boolean.TRUE.equals(handbrakeUp)) {
+            hbCount = 0;
+            hbWarned = false;
+            Popup.hideAlertIf("hand");
+            return;
+        }
+        boolean moving = Fotoradary.speedKmh >= 6 || speedRaw >= 5;
+        hbCount = moving ? hbCount + 1 : 0;
+        if (hbCount >= 2 && !hbWarned && app != null) {
+            hbWarned = true;
+            Popup.showAlert(app, "hand", "", -1);
+        }
+    }
     static volatile double volts = Double.NaN;
 
     /**
@@ -201,9 +225,19 @@ final class CanBus {
         int cmd = f[1] & 0xff;
         frames++;
         synchronized (CanBus.class) {
-            lastByCmd.put(cmd, hex(f, f.length));
+            // 0x41 ma podtypy (01 = stany: ręczny itd., 02 = silnik/paliwo) – trzymamy osobno
+            int key = cmd == 0x41 && f.length > 3 ? 0x4100 | (f[3] & 0xff) : cmd;
+            lastByCmd.put(key, hex(f, f.length));
+        }
+        if (cmd == 0x41 && f.length >= 6 && (f[3] & 0xff) == 0x01) {
+            // sprawdzone w aucie: bit 0x20 = 1 → ręczny opuszczony, 0 → zaciągnięty
+            final boolean up = (f[4] & 0x20) == 0;
+            handbrakeUp = up;
+            h.post(CanBus::checkHandbrake);
+            return;
         }
         if (cmd != 0x41 || f.length < 17 || (f[3] & 0xff) != 0x02) return;
+        speedRaw = ((f[6] & 0xff) << 8) | (f[7] & 0xff);
         int r = ((f[4] & 0xff) << 8) | (f[5] & 0xff);
         int v = ((f[8] & 0xff) << 8) | (f[9] & 0xff);
         int raw = ((f[10] & 0xff) << 8) | (f[11] & 0xff);
@@ -221,6 +255,7 @@ final class CanBus {
         at = System.currentTimeMillis();
         learn(fuelL, mileageKm);
         final int rr = r < 10000 ? r : -1, ff = fuelL, kk = mileageKm;
+        h.post(CanBus::checkHandbrake);
         h.post(() -> {
             AccWatch.onRpm(rr);              // silnik pracuje / zgaszony → Yanosik
             Paliwo.onFuel(app, ff, kk, rr);  // rezerwa, tankowania
