@@ -259,7 +259,9 @@ final class CanBus {
                 .append(", zapytania o dane: ").append(requests).append("\n");
         long age = at == 0 ? -1 : (System.currentTimeMillis() - at) / 1000;
         sb.append("Dane auta (paliwo, obroty): ").append(age < 0 ? "jeszcze nie przyszły" : "sprzed " + age + " s").append("\n");
-        sb.append("Ostatnia paczka: ").append(lastChunk).append("\n\n");
+        sb.append("Ostatnia paczka: ").append(lastChunk).append("\n");
+        if (app != null) sb.append(Auto.shiftInfo(app)).append("\n");
+        sb.append("\n");
         sb.append("Odczytane: paliwo ").append(fuelText()).append(", przebieg ")
                 .append(mileageKm < 0 ? "–" : mileageKm + " km").append(", temp. ")
                 .append(Double.isNaN(outTemp) ? "–" : String.format(Locale.US, "%.1f°C", outTemp))

@@ -367,13 +367,17 @@ final class Auto {
         int lim = Prefs.shiftRpm(c);
         int prev = prevRpm;
         prevRpm = rpm;
+        if (rpm > maxRpmSeen) maxRpmSeen = rpm;
         if (lim <= 0) return;
         if (rpm < lim - 200) armed = true; // zmieniono bieg / zwolniono – można znowu podpowiedzieć
         long now = System.currentTimeMillis();
-        if (armed && prev >= 0 && prev < lim && rpm >= lim && speed() >= 5 && now - shiftSaidAt > 8000) {
+        // przejście przez próg (także gdy między odczytami obroty skoczyły wysoko)
+        if (armed && rpm >= lim && speed() >= 5 && now - shiftSaidAt > 8000) {
             armed = false;
             shiftSaidAt = now;
-            if (!Mowa.speakRadio(c, "Zmień bieg na wyższy")) Popup.beepOnly(c, "shift");
+            shiftCount++;
+            shiftLast = "przy " + rpm + " obr/min, " + speed() + " km/h (poprzedni odczyt " + prev + ")";
+            sayShift(c);
         }
     }
 
@@ -382,5 +386,24 @@ final class Auto {
         if (c == null) return;
         Fotoradary.saveTrip(true);
         c.getSharedPreferences("rc_trip", Context.MODE_PRIVATE).edit().putBoolean("pending", true).apply();
+    }
+
+    static volatile int shiftCount, maxRpmSeen;
+    static volatile String shiftLast = "jeszcze nie było";
+
+    /** Sygnał + głos z głośników radia. */
+    static void sayShift(Context c) {
+        Popup.beepOnly(c, "shift");
+        new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
+            if (!Mowa.speakRadio(c, "Zmień bieg na wyższy")) Mowa.init(c);
+        }, 900);
+    }
+
+    static String shiftInfo(Context c) {
+        int lim = Prefs.shiftRpm(c);
+        return "Podpowiedź biegu: " + (lim <= 0 ? "wyłączona" : "próg " + lim + " obr/min")
+                + ", było razy: " + shiftCount + " (" + shiftLast + ")"
+                + ", najwyższe obroty od startu: " + maxRpmSeen
+                + ", głos radia: " + (Mowa.radioCanSpeak() ? "gotowy" : "NIE gotowy");
     }
 }
