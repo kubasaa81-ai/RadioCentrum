@@ -222,6 +222,8 @@ final class CanBus {
                 .append(Double.isNaN(outTemp) ? "–" : String.format(Locale.US, "%.1f°C", outTemp))
                 .append(", obroty ").append(rpm < 0 ? "–" : rpm + "/min").append(", akumulator ")
                 .append(Double.isNaN(volts) ? "–" : String.format(Locale.US, "%.1f V", volts))
+                .append(", prędkość z auta ").append(Auto.canKmh < 0 ? "–" : String.format(Locale.US, "%.1f km/h", Auto.canKmh))
+                .append(" (GPS ").append(Fotoradary.last != null ? Fotoradary.speedKmh + " km/h" : "–").append(")")
                 .append(", ręczny ").append(handbrakeUp == null ? "–" : handbrakeUp ? "ZACIĄGNIĘTY" : "opuszczony")
                 .append("\n\n");
         sb.append("Ostatnia ramka każdego rodzaju (rodzaj: bajty):\n");
@@ -248,7 +250,7 @@ final class CanBus {
             Popup.hideAlertIf("hand");
             return;
         }
-        boolean moving = Fotoradary.speedKmh >= 6 || speedRaw >= 5;
+        boolean moving = Auto.speed() >= 6;
         hbCount = moving ? hbCount + 1 : 0;
         if (hbCount >= 2 && !hbWarned && app != null) {
             hbWarned = true;
@@ -278,6 +280,7 @@ final class CanBus {
         }
         if (cmd != 0x41 || f.length < 17 || (f[3] & 0xff) != 0x02) return;
         speedRaw = ((f[6] & 0xff) << 8) | (f[7] & 0xff);
+        Auto.onSpeedRaw(speedRaw);
         int r = ((f[4] & 0xff) << 8) | (f[5] & 0xff);
         int v = ((f[8] & 0xff) << 8) | (f[9] & 0xff);
         int raw = ((f[10] & 0xff) << 8) | (f[11] & 0xff);
@@ -299,6 +302,7 @@ final class CanBus {
         h.post(() -> {
             AccWatch.onRpm(rr);              // silnik pracuje / zgaszony → Yanosik
             Paliwo.onFuel(app, ff, kk, rr);  // rezerwa, tankowania
+            Auto.onEngine(app, rr, volts);   // akumulator, przypomnienie o serwisie
         });
     }
 

@@ -103,7 +103,7 @@ final class Popup {
         final String key = m.optString("key");
         final String speech = speech(m);
         final boolean isCam = "Fotoradar".equals(appName) || "Policja".equals(appName) || "Uwaga".equals(appName)
-                || "Paliwo".equals(appName);
+                || "Paliwo".equals(appName) || "Serwis".equals(appName);
         LinearLayout row = new LinearLayout(app);
         row.setOrientation(LinearLayout.HORIZONTAL);
         if (!isCam) row.addView(Ui.buttonFit(app, "🔊 Przeczytaj", Ui.BLUE, 18, v -> {
@@ -189,7 +189,11 @@ final class Popup {
             String low = text == null ? "" : text.toLowerCase(java.util.Locale.ROOT);
             String icon, label;
             int accent;
-            if ("hand".equals(kind)) {
+            if (kind.startsWith("batt")) {
+                icon = "🔋";
+                label = "batt_low".equals(kind) ? "SŁABE ŁADOWANIE AKUMULATORA" : "ZA WYSOKIE NAPIĘCIE ŁADOWANIA";
+                accent = Ui.RED;
+            } else if ("hand".equals(kind)) {
                 icon = "🅿";
                 label = "ZACIĄGNIĘTY RĘCZNY!";
                 accent = Ui.RED;
@@ -216,11 +220,12 @@ final class Popup {
                         : "UWAGA NA DRODZE";
                 accent = Ui.RED;
             }
-            int lim = "hand".equals(kind) ? 0 : limitFrom(low);
+            boolean road = !"hand".equals(kind) && !kind.startsWith("batt");
+            int lim = road ? limitFrom(low) : 0;
             if (lim <= 0 && "cam".equals(kind) && Fotoradary.nearestM >= 0 && Fotoradary.nearestM < 1500) {
                 lim = Fotoradary.nearestLim;
             }
-            int speed = Fotoradary.speedKmh;
+            int speed = kind.startsWith("batt") ? 0 : Math.max(0, Auto.speed());
 
             LinearLayout card = card(accent);
             card.setGravity(Gravity.CENTER_HORIZONTAL);
@@ -236,6 +241,13 @@ final class Popup {
             lb.setMaxLines(2);
             card.addView(lb, new LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+            if (kind.startsWith("batt")) {
+                TextView d = Ui.text(app, "Napięcie " + text + " przy pracującym silniku – sprawdź alternator / akumulator",
+                        20, Ui.WHITE, false);
+                d.setGravity(Gravity.CENTER);
+                card.addView(d, new LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+            }
             if (distM > 0) {
                 TextView d = Ui.text(app, "za " + distM + " m", 22, Ui.WHITE, true);
                 d.setGravity(Gravity.CENTER);

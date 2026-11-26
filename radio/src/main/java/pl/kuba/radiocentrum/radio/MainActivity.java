@@ -1444,8 +1444,9 @@ public class MainActivity extends Activity {
     private void refreshHomeData() {
         if (dataVals == null) return;
         boolean gps = Fotoradary.last != null;
-        boolean hand = Boolean.TRUE.equals(CanBus.handbrakeUp) && Fotoradary.speedKmh < 6;
-        dataVals[0].setText(hand ? "🅿 RĘCZNY" : gps ? Fotoradary.speedKmh + " km/h" : "brak GPS");
+        int spd = Auto.speed();
+        boolean hand = Boolean.TRUE.equals(CanBus.handbrakeUp) && spd < 6;
+        dataVals[0].setText(hand ? "🅿 RĘCZNY" : spd >= 0 ? spd + " km/h" : "brak GPS");
         dataVals[0].setTextColor(hand ? 0xFFEF5350 : Ui.WHITE);
         float b = Fotoradary.bearing;
         boolean can = Prefs.canOn(this);

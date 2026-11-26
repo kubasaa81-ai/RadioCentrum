@@ -135,6 +135,8 @@ final class Paliwo {
         sb.append(String.format(Locale.US, "Średnie spalanie: %.1f l/100 km", CanBus.consumption()))
                 .append(CanBus.consLearned() ? " (z Twojej jazdy)" : " (domyślne – wyliczy się samo)").append("\n");
         sb.append("Przebieg: ").append(CanBus.mileageKm < 0 ? "–" : CanBus.mileageKm + " km");
+        sb.append("\nAkumulator: ").append(Auto.battText());
+        sb.append("\nSerwis / olej: ").append(Auto.serviceText(a));
 
         StringBuilder lg = new StringBuilder();
         JSONArray log = log();
@@ -170,6 +172,7 @@ final class Paliwo {
                         a.startActivity(i);
                     }
                 }));
+        o.row(o.btn("🔧 Serwis / olej", Ui.BLUE, true, () -> Auto.serviceDialog(a)));
         if (log.length() > 0) {
             o.row(o.btn("🗑 Usuń ostatni wpis", Ui.RED, true, () -> {
                 JSONArray l = log();
