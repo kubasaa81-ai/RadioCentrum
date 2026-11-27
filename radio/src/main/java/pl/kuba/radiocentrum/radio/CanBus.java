@@ -306,7 +306,7 @@ final class CanBus {
                 .append(" [skala ").append(Auto.scaleText()).append("]")
                 .append(" (GPS ").append(Fotoradary.last != null ? Fotoradary.speedKmh + " km/h" : "–").append(")")
                 .append(", ręczny ").append(handbrakeUp == null ? "–" : handbrakeUp ? "ZACIĄGNIĘTY" : "opuszczony")
-                .append(", pas kierowcy ").append(beltOff == null ? "–" : beltOff ? "ODPIĘTY" : "zapięty")
+                .append(", pasy z przodu ").append(beltOff == null ? "–" : beltOff ? "ODPIĘTE" : "zapięte")
                 .append("\n\n");
         if (snap != null) {
             sb.append("🔍 SZUKANIE ZMIAN – od ").append((System.currentTimeMillis() - snapAt) / 1000).append(" s\n");
@@ -345,7 +345,7 @@ final class CanBus {
     private static int hbCount;
     private static boolean hbWarned;
 
-    /** Jazda (≥ 10 km/h przez 5 s) z odpiętym pasem kierowcy → znak „Zapnij pas”, powtarzany co minutę. */
+    /** Jazda (≥ 10 km/h przez 5 s) przy świecącej lampce pasów → znak „Zapnij pasy”, powtarzany co minutę. */
     private static void checkBelt() {
         long now = android.os.SystemClock.elapsedRealtime();
         if (!Boolean.TRUE.equals(beltOff) || Auto.speed() < 10) {
@@ -412,7 +412,8 @@ final class CanBus {
             // sprawdzone w aucie: bit 0x20 = 1 → ręczny opuszczony, 0 → zaciągnięty
             final boolean up = (f[4] & 0x20) == 0;
             handbrakeUp = up;
-            // sprawdzone w aucie: bit 0x80 = 1 → pas kierowcy odpięty (pasa pasażera moduł nie podaje)
+            // sprawdzone w aucie: bit 0x80 = 1 → lampka pasów: ktoś na ZAJĘTYM przednim fotelu ma odpięty pas
+            // (bity 0x01 / 0x02 = otwarte drzwi kierowcy / pasażera – na razie tylko w podglądzie)
             beltOff = (f[4] & 0x80) != 0;
             h.post(CanBus::checkHandbrake);
             return;

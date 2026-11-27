@@ -193,7 +193,7 @@ final class Popup {
             String[] sh = "shift".equals(kind) ? (text + "|||").split("\\|") : null;
             if ("belt".equals(kind)) {
                 icon = "🔔";
-                label = "ZAPNIJ PAS!";
+                label = "ZAPNIJ PASY!";
                 accent = Ui.RED;
             } else if (sh != null) {
                 boolean upS = !"DOWN".equals(sh[0]);
