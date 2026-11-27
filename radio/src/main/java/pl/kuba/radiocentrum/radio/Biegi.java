@@ -36,7 +36,7 @@ final class Biegi {
     }
 
     private static void save() {
-        long t = System.currentTimeMillis();
+        long t = android.os.SystemClock.elapsedRealtime();
         if (ctx == null || t - savedAt < 30000) return;
         savedAt = t;
         SharedPreferences.Editor ed = ctx.getSharedPreferences("rc_gears", Context.MODE_PRIVATE).edit();
@@ -84,7 +84,7 @@ final class Biegi {
             save();
         }
         if (up <= 0 || hintedGear == g) return;
-        long now = System.currentTimeMillis();
+        long now = android.os.SystemClock.elapsedRealtime();
         if (now - saidAt < 3000) return;
 
         // ⬆ wyższy: obroty ≥ próg, nie najwyższy bieg, po zmianie obroty nie spadną poniżej 1250
@@ -104,7 +104,7 @@ final class Biegi {
 
     private static void hint(Context c, boolean upShift, int from, int to, int rpm) {
         hintedGear = from;
-        saidAt = System.currentTimeMillis();
+        saidAt = android.os.SystemClock.elapsedRealtime();
         lowSince = 0;
         if (upShift) upCount++;
         else downCount++;

@@ -44,7 +44,7 @@ final class Auto {
     static void onSpeedRaw(int raw) {
         if (raw < 0 || raw > 30000) return;
         if (scale < 0) scale = 0.01;
-        long now = System.currentTimeMillis();
+        long now = android.os.SystemClock.elapsedRealtime();
         double kmh = raw * scale;
         canKmh = kmh;
         canKmhAt = now;
@@ -94,7 +94,7 @@ final class Auto {
 
     /** Czy mamy świeżą prędkość z auta (ostatnie 5 s). */
     static boolean canSpeedFresh() {
-        return canKmh >= 0 && System.currentTimeMillis() - canKmhAt < 5000;
+        return canKmh >= 0 && android.os.SystemClock.elapsedRealtime() - canKmhAt < 5000;
     }
 
     /** Prędkość do pokazania i ostrzeżeń: z auta, a gdy jej brak – z GPS. -1 = nie wiadomo. */
@@ -110,7 +110,7 @@ final class Auto {
 
     /** Napięcie przy pracującym silniku: < 12,8 V lub > 15,2 V przez 30 s → ostrzeżenie (raz na jazdę). */
     static void onEngine(Context c, int rpm, double volts) {
-        long now = System.currentTimeMillis();
+        long now = android.os.SystemClock.elapsedRealtime();
         month(c);
         if (rpm < 500) {
             if (runSince != 0 && rpm == 0) {
@@ -280,12 +280,12 @@ final class Auto {
         if (idleSince == 0) return;
         long ms = now - idleSince;
         idleSince = 0;
-        if (ms < 5 * 60000L || c == null) return;
+        if (ms < 5 * 60000L || ms > 4 * 3600000L || c == null || !clockOk()) return;
         try {
             SharedPreferences p = c.getSharedPreferences("rc_auto", Context.MODE_PRIVATE);
             org.json.JSONArray a = new org.json.JSONArray(p.getString("idles", "[]"));
             org.json.JSONObject e = new org.json.JSONObject();
-            e.put("t", now - ms);
+            e.put("t", System.currentTimeMillis() - ms);
             e.put("min", Math.round(ms / 60000.0));
             e.put("l", Math.round(ms / 3600000.0 * IDLE_LPH * 100) / 100.0);
             a.put(e);
@@ -299,7 +299,8 @@ final class Auto {
 
     private static void month(Context c) {
         int km = CanBus.mileageKm;
-        if (c == null || km <= 0) return;
+        if (c == null || km <= 0 || !clockOk()) return;
+        cleanupOnce(c);
         String key = new java.text.SimpleDateFormat("yyyy-MM", Locale.ROOT).format(new java.util.Date());
         try {
             SharedPreferences p = c.getSharedPreferences("rc_auto", Context.MODE_PRIVATE);
@@ -327,10 +328,10 @@ final class Auto {
     /** Wyślij na telefon stan auta (paliwo, przebieg, akumulator, serwis, tankowania, postoje, miejsce). */
     static void sendState(Context c, boolean parked) {
         if (c == null) return;
-        sentAt = System.currentTimeMillis();
+        sentAt = android.os.SystemClock.elapsedRealtime();
         try {
             SharedPreferences p = c.getSharedPreferences("rc_auto", Context.MODE_PRIVATE);
-            org.json.JSONObject m = J.obj("t", "car_state", "ts", sentAt, "parked", parked,
+            org.json.JSONObject m = J.obj("t", "car_state", "ts", System.currentTimeMillis(), "parked", parked,
                     "fuel", CanBus.fuelL, "range", CanBus.rangeText(), "km", CanBus.mileageKm,
                     "cons", Math.round(CanBus.consumption() * 10) / 10.0,
                     "consLearned", CanBus.consLearned(),
@@ -392,5 +393,34 @@ final class Auto {
         return "Podpowiedź biegu: " + (lim <= 0 ? "wyłączona" : "wyższy od " + lim + ", niższy poniżej "
                 + Math.max(1000, lim - 800) + " obr/min") + ", najwyższe obroty od startu: " + maxRpmSeen
                 + "\n" + Biegi.info();
+    }
+
+    /** Zegar radia ustawiony? Po starcie radio ma przez chwilę datę z 2018 r., dopóki nie pobierze godziny. */
+    static boolean clockOk() {
+        return System.currentTimeMillis() > 1704067200000L; // po 1.01.2024
+    }
+
+    private static boolean cleaned;
+
+    /** Usuń wpisy zapisane przy złym zegarze (postoje „4 mln minut”, miesiąc „sierpień 2018”). */
+    private static void cleanupOnce(Context c) {
+        if (cleaned) return;
+        cleaned = true;
+        try {
+            SharedPreferences p = c.getSharedPreferences("rc_auto", Context.MODE_PRIVATE);
+            org.json.JSONArray a = new org.json.JSONArray(p.getString("idles", "[]")), ok = new org.json.JSONArray();
+            for (int i = 0; i < a.length(); i++) {
+                org.json.JSONObject e = a.optJSONObject(i);
+                if (e != null && e.optLong("t") > 1704067200000L && e.optInt("min") <= 240) ok.put(e);
+            }
+            org.json.JSONObject m = new org.json.JSONObject(p.getString("months", "{}")), m2 = new org.json.JSONObject();
+            java.util.Iterator<String> it = m.keys();
+            while (it.hasNext()) {
+                String k = it.next();
+                if (k.compareTo("2024") >= 0) m2.put(k, m.get(k));
+            }
+            p.edit().putString("idles", ok.toString()).putString("months", m2.toString()).apply();
+        } catch (Exception ignored) {
+        }
     }
 }
