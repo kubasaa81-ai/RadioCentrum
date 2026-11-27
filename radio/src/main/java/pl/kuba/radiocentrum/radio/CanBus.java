@@ -306,7 +306,9 @@ final class CanBus {
                 .append(" [skala ").append(Auto.scaleText()).append("]")
                 .append(" (GPS ").append(Fotoradary.last != null ? Fotoradary.speedKmh + " km/h" : "–").append(")")
                 .append(", ręczny ").append(handbrakeUp == null ? "–" : handbrakeUp ? "ZACIĄGNIĘTY" : "opuszczony")
-                .append(", pasy z przodu ").append(beltOff == null ? "–" : beltOff ? "ODPIĘTE" : "zapięte")
+                .append(", lampka pasów ").append(beltOff == null ? "–" : beltOff ? "ŚWIECI" : "zgaszona")
+                .append(", pas kierowcy ").append(driverBelt == null ? "–" : driverBelt ? "zapięty" : "ODPIĘTY")
+                .append(passengerUnbelted() ? " → PASAŻER BEZ PASA" : "")
                 .append("\n\n");
         if (snap != null) {
             sb.append("🔍 SZUKANIE ZMIAN – od ").append((System.currentTimeMillis() - snapAt) / 1000).append(" s\n");
@@ -339,18 +341,24 @@ final class CanBus {
     }
 
     static volatile int rpm = -1;
-    static volatile Boolean handbrakeUp, beltOff;
+    static volatile Boolean handbrakeUp, beltOff, driverBelt;
     private static long beltSince, beltWarnAt;
     static volatile int speedRaw = -1;
     private static int hbCount;
     private static boolean hbWarned;
 
-    /** Jazda (≥ 10 km/h przez 5 s) przy świecącej lampce pasów → znak „Zapnij pasy”, powtarzany co minutę. */
+    /** Pasażer bez pasa: świeci lampka pasów, a pas kierowcy jest zapięty → to pas pasażera. */
+    static boolean passengerUnbelted() {
+        return Boolean.TRUE.equals(beltOff) && Boolean.TRUE.equals(driverBelt);
+    }
+
+    /** Jazda (≥ 10 km/h przez 5 s) z odpiętym pasem PASAŻERA → znak „Pasażer: zapnij pas”, powtarzany co minutę. */
     private static void checkBelt() {
         long now = android.os.SystemClock.elapsedRealtime();
-        if (!Boolean.TRUE.equals(beltOff) || Auto.speed() < 10) {
+        boolean pas = passengerUnbelted();
+        if (!pas || Auto.speed() < 10) {
             beltSince = 0;
-            if (!Boolean.TRUE.equals(beltOff)) Popup.hideAlertIf("belt");
+            if (!pas) Popup.hideAlertIf("belt");
             return;
         }
         if (beltSince == 0) beltSince = now;
@@ -407,6 +415,12 @@ final class CanBus {
                     changedLast.put(key, hx);
                 }
             }
+        }
+        if (cmd == 0x7D && f.length >= 6 && (f[2] & 0xff) == 0x02 && (f[3] & 0xff) == 0x06) {
+            // sprawdzone w aucie: 0x7D/06 bit 0x20 = 1 → pas KIEROWCY zapięty
+            driverBelt = (f[4] & 0x20) != 0;
+            h.post(CanBus::checkBelt);
+            return;
         }
         if (cmd == 0x41 && f.length >= 6 && (f[3] & 0xff) == 0x01) {
             // sprawdzone w aucie: bit 0x20 = 1 → ręczny opuszczony, 0 → zaciągnięty
