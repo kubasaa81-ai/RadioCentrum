@@ -375,6 +375,8 @@ public class RadioService extends Service implements Link.Handler {
                 default: {
                     java.io.OutputStream out = incoming.remove(name);
                     if (out != null) out.close();
+                    long got = new java.io.File(downloadsDir(), name).length();
+                    sendNow(J.obj("t", "file_saved", "name", name, "size", got)); // potwierdzenie z rozmiarem
                     final String msg = "✅ Odebrano z telefonu: Pobrane/" + name;
                     main.post(() -> android.widget.Toast.makeText(this, msg, android.widget.Toast.LENGTH_LONG).show());
                     sendNow(J.obj("t", "toast", "text", "✅ Plik " + name + " jest w radiu (Pobrane)"));

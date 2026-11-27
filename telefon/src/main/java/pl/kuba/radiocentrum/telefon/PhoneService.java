@@ -504,6 +504,14 @@ public class PhoneService extends NotificationListenerService implements Link.Ha
                     }
                 });
                 break;
+            case "file_saved":
+                if (m.optString("name").equals(ulName)) {
+                    long got = m.optLong("size", -1);
+                    ulState = got >= 0 && got != ulSent ? 3 : 2;
+                    ulNotify();
+                    if (ulState == 3) phoneToast("❌ Radio zapisało tylko " + got / 1024 + " z " + ulSent / 1024 + " kB – wyślij jeszcze raz");
+                }
+                break;
             case "car_state":
                 MojeAuto.onState(this, m);
                 break;
@@ -640,6 +648,12 @@ public class PhoneService extends NotificationListenerService implements Link.Ha
                 return;
             }
             phoneToast("📤 Wysyłam do radia: " + name);
+            ulName = name;
+            ulSize = size;
+            ulSent = 0;
+            ulState = 1;
+            ulLastPct = -1;
+            ulNotify();
             try (java.io.InputStream in = getContentResolver().openInputStream(uri)) {
                 if (in == null) throw new IOException("brak");
                 if (!l.send(J.obj("t", "file_begin", "name", name, "size", size))) throw new IOException("link");
@@ -648,9 +662,20 @@ public class PhoneService extends NotificationListenerService implements Link.Ha
                 while ((n = in.read(buf)) > 0) {
                     String b64 = android.util.Base64.encodeToString(buf, 0, n, android.util.Base64.NO_WRAP);
                     if (!l.send(J.obj("t", "file_chunk", "name", name, "data", b64))) throw new IOException("link");
+                    ulSent += n;
+                    int pct = ulSize > 0 ? (int) (ulSent * 100 / ulSize) : 0;
+                    if (pct / 5 != ulLastPct / 5) {
+                        ulLastPct = pct;
+                        ulNotify();
+                    }
                 }
-                l.send(J.obj("t", "file_end", "name", name));
+                if (ulSize <= 0) ulSize = ulSent;
+                l.send(J.obj("t", "file_end", "name", name, "size", ulSent));
+                ulState = 4; // radio odpisze „file_saved” z rozmiarem
+                ulNotify();
             } catch (Exception e) {
+                ulState = 3;
+                ulNotify();
                 phoneToast("Nie udało się wysłać pliku do radia");
             }
         }, "rc-send-file").start();
@@ -722,6 +747,40 @@ public class PhoneService extends NotificationListenerService implements Link.Ha
                         .setAutoCancel(true);
             }
             nm.notify(4712, b.build());
+        } catch (Exception ignored) {
+        }
+    }
+
+    static volatile String ulName;
+    static volatile long ulSize, ulSent;
+    /** 0 = nic, 1 = wysyłam, 2 = radio potwierdziło, 3 = błąd, 4 = wysłane – czekam na potwierdzenie radia. */
+    static volatile int ulState;
+    private int ulLastPct = -1;
+
+    private void ulNotify() {
+        try {
+            android.app.NotificationManager nm = (android.app.NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+            if (nm == null) return;
+            if (Build.VERSION.SDK_INT >= 26) {
+                nm.createNotificationChannel(new android.app.NotificationChannel("rc_dl", "Pobieranie z radia",
+                        android.app.NotificationManager.IMPORTANCE_LOW));
+            }
+            android.app.Notification.Builder b = Build.VERSION.SDK_INT >= 26
+                    ? new android.app.Notification.Builder(this, "rc_dl") : new android.app.Notification.Builder(this);
+            int pct = ulSize > 0 ? (int) Math.min(100, ulSent * 100 / ulSize) : 0;
+            if (ulState == 1 || ulState == 4) {
+                b.setSmallIcon(android.R.drawable.stat_sys_upload)
+                        .setContentTitle(ulState == 1 ? "📤 Wysyłam do radia " + pct + "%" : "📤 Wysłano – czekam na radio…")
+                        .setContentText(ulName)
+                        .setProgress(100, pct, ulSize <= 0)
+                        .setOngoing(true);
+            } else {
+                b.setSmallIcon(ulState == 2 ? android.R.drawable.stat_sys_upload_done : android.R.drawable.stat_notify_error)
+                        .setContentTitle(ulState == 2 ? "✅ Plik jest w radiu" : "❌ Nie udało się wysłać do radia")
+                        .setContentText(ulName + (ulState == 2 ? " – Pobrane w radiu" : ""))
+                        .setAutoCancel(true);
+            }
+            nm.notify(4713, b.build());
         } catch (Exception ignored) {
         }
     }

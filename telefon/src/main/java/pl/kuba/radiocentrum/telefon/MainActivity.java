@@ -39,9 +39,9 @@ import java.util.Locale;
 
 public class MainActivity extends Activity {
 
-    private TextView status, checks, codeView, dlText;
-    private android.widget.ProgressBar dlBar;
-    private LinearLayout dlBox;
+    private TextView status, checks, codeView, dlText, ulText;
+    private android.widget.ProgressBar dlBar, ulBar;
+    private LinearLayout dlBox, ulBox;
     private final Handler h = new Handler(Looper.getMainLooper());
     private final Runnable tick = new Runnable() {
         @Override
@@ -100,6 +100,18 @@ public class MainActivity extends Activity {
         dlBox.setVisibility(View.GONE);
         col.addView(dlBox, lp(6));
         col.addView(button("📤 Wyślij plik do radia (Pobrane)", 0xFF00838F, v -> pickFileForRadio()), lp(10));
+        ulBox = new LinearLayout(this);
+        ulBox.setOrientation(LinearLayout.VERTICAL);
+        ulBox.setPadding(dp(16), dp(10), dp(16), dp(12));
+        ulBox.setBackground(round(0xFF1E2A33, 14));
+        ulText = text("", 16, 0xFFFFFFFF, true);
+        ulBox.addView(ulText);
+        ulBar = new android.widget.ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
+        ulBar.setMax(100);
+        ulBar.setProgressTintList(android.content.res.ColorStateList.valueOf(0xFF4FC3F7));
+        ulBox.addView(ulBar, lp(6));
+        ulBox.setVisibility(View.GONE);
+        col.addView(ulBox, lp(6));
         col.addView(button("Ustawienia aplikacji (ograniczone ustawienia)", 0xFF546E7A, v -> openAppDetails()), lp(10));
         yanButton = button("", 0xFFC62828, v -> {
             Prefs.setYanAuto(this, !Prefs.yanAuto(this));
@@ -219,6 +231,21 @@ public class MainActivity extends Activity {
                         : st0 == 2 ? "✅ Pobrano: " + PhoneService.dlName + " (w Pobranych)"
                         : "❌ Nie udało się: " + PhoneService.dlName + " (" + sz + ") – spróbuj ponownie");
                 dlText.setTextColor(st0 == 3 ? 0xFFEF5350 : st0 == 2 ? 0xFF81C784 : 0xFFFFFFFF);
+            }
+        }
+        int us = PhoneService.ulState;
+        if (ulBox != null) {
+            ulBox.setVisibility(us == 0 ? View.GONE : View.VISIBLE);
+            if (us != 0) {
+                long size = PhoneService.ulSize, sent = PhoneService.ulSent;
+                int pct = size > 0 ? (int) Math.min(100, sent * 100 / size) : 0;
+                ulBar.setProgress(us == 2 ? 100 : pct);
+                String sz = String.format(Locale.US, "%.1f / %.1f MB", sent / 1048576.0, size / 1048576.0);
+                ulText.setText(us == 1 ? "📤 Wysyłam do radia " + pct + "%  ·  " + sz + "\n" + PhoneService.ulName
+                        : us == 4 ? "📤 Wysłano – czekam na potwierdzenie radia…\n" + PhoneService.ulName
+                        : us == 2 ? "✅ Plik jest w radiu (Pobrane): " + PhoneService.ulName
+                        : "❌ Nie udało się wysłać: " + PhoneService.ulName + " – spróbuj ponownie");
+                ulText.setTextColor(us == 3 ? 0xFFEF5350 : us == 2 ? 0xFF81C784 : 0xFFFFFFFF);
             }
         }
         PhoneService s = PhoneService.instance;
