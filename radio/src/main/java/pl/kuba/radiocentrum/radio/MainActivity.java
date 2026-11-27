@@ -1191,6 +1191,10 @@ public class MainActivity extends Activity {
                             recreate();
                         }),
                 o.btn("🔎 Podgląd CAN", 0xFF00838F, true, this::canView));
+        o.row(o.btn("🔎 Szukaj serwerów aktualizacji", 0xFF1565C0, true, () -> {
+            toast("Przeglądam aplikacje w radiu – to potrwa 1–3 minuty, możesz w tym czasie korzystać z radia");
+            UpdScan.start(this);
+        }));
         o.row(o.btn("🔬 Sonda CAN – bezpieczna", 0xFF455A64, true, () -> CanProbe.run(this)),
                 o.btn("📻 Zapisz aplikację radia FM", 0xFFAD1457, true, this::exportRadioApks));
         o.row(o.btn("🎙 Test mikrofonu (nagraj i odsłuchaj)", Ui.GREEN, true,
@@ -2163,7 +2167,7 @@ public class MainActivity extends Activity {
         }
     }
 
-    private void toast(String s) {
+    void toast(String s) {
         Toast.makeText(this, s, Toast.LENGTH_LONG).show();
     }
 }

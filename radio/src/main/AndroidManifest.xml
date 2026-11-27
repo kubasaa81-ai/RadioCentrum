@@ -19,6 +19,7 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <application
+        android:usesCleartextTraffic="true"
         android:allowBackup="false"
         android:icon="@drawable/ic_app"
         android:label="Radio Centrum"
