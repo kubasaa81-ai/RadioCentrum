@@ -1974,7 +1974,25 @@ public class MainActivity extends Activity {
     /** Zbiera diagnostykę, zapisuje w radiu (Pobrane) i wysyła do telefonu (Pobrane w telefonie). */
     /** Kopiuje pliki APK aplikacji CAN do Pobranych – do analizy, jak odczytać paliwo / zasięg. */
     private void exportCanApks() {
-        exportApks("CAN-", new String[]{"com.xygala.canbus", "com.example.tmedia", "com.xygala.pvcanset"});
+        // nazwa fabrycznej aplikacji CAN mogła się zmienić po aktualizacji – szukamy po nazwie i etykiecie
+        java.util.LinkedHashSet<String> l = new java.util.LinkedHashSet<>(java.util.Arrays.asList(
+                "com.xygala.canbus", "com.example.tmedia", "com.xygala.pvcanset"));
+        StringBuilder found = new StringBuilder();
+        try {
+            android.content.pm.PackageManager pm = getPackageManager();
+            for (android.content.pm.ApplicationInfo ai : pm.getInstalledApplications(0)) {
+                String n = ai.packageName.toLowerCase(java.util.Locale.ROOT);
+                String lab = String.valueOf(pm.getApplicationLabel(ai)).toLowerCase(java.util.Locale.ROOT);
+                if (n.contains("canbus") || n.contains("xygala") || n.contains("carinfo") || n.contains("canset")
+                        || lab.contains("samoch") || lab.contains("canbus") || lab.contains("car info")) {
+                    l.add(ai.packageName);
+                    found.append(ai.packageName).append(" (").append(pm.getApplicationLabel(ai)).append(")\n");
+                }
+            }
+        } catch (Exception ignored) {
+        }
+        if (found.length() > 0) toast("Znalezione aplikacje CAN:\n" + found);
+        exportApks("CAN-", l.toArray(new String[0]));
     }
 
     /** Fabryczne aplikacje radia FM – do podejrzenia, jak sterują tunerem. */

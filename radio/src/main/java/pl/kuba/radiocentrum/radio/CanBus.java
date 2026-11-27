@@ -33,12 +33,15 @@ final class CanBus {
      */
     private static final byte[] REQ_CARINFO = {0x2E, (byte) 0x90, 0x02, 0x41, 0x02, 0x2A};
     static volatile int requests;
+    private static int pollN;
     private static final Runnable poll = new Runnable() {
         @Override
         public void run() {
             if (!wanted || !registered) return;
             // gdy fabryczny ekran jest otwarty, on już pyta – nie dublujemy
             if (System.currentTimeMillis() - at > 300) request(); // obroty na bieżąco (ok. 2–3 razy na sekundę)
+            // stany (ręczny, pasy, spryskiwacze) – po aktualizacji modułu przychodzą tylko na prośbę
+            if (++pollN % 5 == 0) ask(0x41, 0x01);
             h.postDelayed(this, rpm > 0 ? 400 : 2000); // przy pracującym silniku częściej – do podpowiedzi biegu
         }
     };
