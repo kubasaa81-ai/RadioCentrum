@@ -214,6 +214,38 @@ final class CanBus {
     }
 
     /** Podgląd do porównania z fabrycznym ekranem „Informacje o aucie”. */
+    private static final java.util.TreeMap<Integer, Integer> countByCmd = new java.util.TreeMap<>();
+    private static final java.util.HashMap<Integer, String> lastLogged = new java.util.HashMap<>();
+    private static final java.util.ArrayDeque<String> frameLog = new java.util.ArrayDeque<>();
+
+    /**
+     * Zapis podglądu do pliku w Pobranych: stan, wszystkie rodzaje ramek z licznikami
+     * i dziennik ostatnich zmian ramek (do 3000 wpisów, z godziną).
+     */
+    static java.io.File saveToFile(Context c) throws java.io.IOException {
+        String ts = new java.text.SimpleDateFormat("yyyyMMdd-HHmmss", Locale.ROOT).format(new java.util.Date());
+        java.io.File dir = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS);
+        dir.mkdirs();
+        java.io.File f = new java.io.File(dir, "CAN-podglad-" + ts + ".txt");
+        StringBuilder sb = new StringBuilder();
+        sb.append("Radio Centrum – podgląd CAN ").append(ts).append("\n\n").append(dump()).append("\n");
+        synchronized (CanBus.class) {
+            sb.append("=== Rodzaje ramek (ile razy przyszły) ===\n");
+            for (java.util.Map.Entry<Integer, Integer> e : countByCmd.entrySet()) {
+                sb.append(keyName(e.getKey())).append("  ×").append(e.getValue()).append("\n");
+            }
+            sb.append("\n=== Dziennik zmian ramek (najstarsze na górze) ===\n");
+            for (String l : frameLog) sb.append(l).append("\n");
+        }
+        java.io.FileOutputStream out = new java.io.FileOutputStream(f);
+        try {
+            out.write(sb.toString().getBytes("UTF-8"));
+        } finally {
+            out.close();
+        }
+        return f;
+    }
+
     // ---------------------------------------------------------------- szukanie zmian (np. klima)
 
     private static java.util.Map<Integer, String> snap;
@@ -337,6 +369,15 @@ final class CanBus {
             int key = cmd == 0x41 && f.length > 3 ? 0x4100 | (f[3] & 0xff) : cmd;
             String hx = hex(f, f.length);
             lastByCmd.put(key, hx);
+            Integer cn = countByCmd.get(key);
+            countByCmd.put(key, cn == null ? 1 : cn + 1);
+            // dziennik ramek do pliku – pomijamy powtórki identycznej ramki (oszczędza miejsce)
+            if (!hx.equals(lastLogged.get(key))) {
+                lastLogged.put(key, hx);
+                frameLog.add(new java.text.SimpleDateFormat("HH:mm:ss.SSS", Locale.ROOT).format(new java.util.Date())
+                        + "  " + hx);
+                while (frameLog.size() > 3000) frameLog.removeFirst();
+            }
             if (snap != null) {
                 String was = snap.get(key);
                 if (was == null) newKinds.put(key, hx);

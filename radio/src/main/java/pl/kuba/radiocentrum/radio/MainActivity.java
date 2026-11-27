@@ -1138,7 +1138,16 @@ public class MainActivity extends Activity {
     /** Surowe dane z CAN – do porównania z fabrycznym ekranem i ustawienia właściwych bajtów. */
     private void canView() {
         Okno o = new Okno(this, "🔎 Podgląd CAN", CanBus.dump()
-                + "\nZrób zdjęcie tego okna i wyślij w czacie.");
+                + "\n„💾 Zapisz do pliku” zapisze wszystko w Pobranych – potem pobierz to telefonem.");
+        o.row(o.btn("💾 Zapisz do pliku", 0xFF2E7D32, true, () -> {
+                    try {
+                        java.io.File f = CanBus.saveToFile(this);
+                        toast("Zapisano w Pobranych: " + f.getName() + " – pobierz telefonem (📥 Pobierz pliki z radia)");
+                    } catch (Exception e) {
+                        toast("Nie udało się zapisać: " + e.getMessage());
+                    }
+                }),
+                o.btn("📦 Zapisz aplikację CAN", 0xFF5D4037, true, this::exportCanApks));
         o.row(o.btn("🔄 Odśwież", Ui.BLUE, true, this::canView),
                 o.btn("🚙 Fabryczne Dane auta", 0xFF2E7D32, true, () -> openPkg("com.xygala.canbus")));
         o.row(CanBus.searching()
