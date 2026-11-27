@@ -150,6 +150,11 @@ public class MojeAuto extends Activity {
     protected void onResume() {
         super.onResume();
         build();
+        PhoneService ps = PhoneService.instance;
+        if (ps != null) {
+            ps.requestCarState(); // świeże dane z radia przy każdym otwarciu
+            col.postDelayed(this::build, 1500);
+        }
     }
 
     private void build() {
@@ -214,7 +219,16 @@ public class MojeAuto extends Activity {
         // --- postoje na silniku
         col.addView(card("⏱ Postoje na pracującym silniku (powyżej 5 min)", idles(s), 0xFF546E7A), lp(14));
 
-        col.addView(button("🔄 Odśwież", 0xFF3949AB, v -> build()), lp(18));
+        col.addView(button("🔄 Odśwież (pobierz z radia)", 0xFF3949AB, v -> {
+            PhoneService ps = PhoneService.instance;
+            if (ps != null) {
+                ps.requestCarState();
+                Toast.makeText(this, "Pobieram dane z radia…", Toast.LENGTH_SHORT).show();
+                col.postDelayed(this::build, 1500);
+            } else {
+                build();
+            }
+        }), lp(18));
     }
 
     private String dateLine(SharedPreferences sp, String key, String name) {
@@ -329,8 +343,11 @@ public class MojeAuto extends Activity {
     }
 
     private static String idles(JSONObject s) {
+        String now = s.has("idleNowMin") ? String.format(Locale.US, "⏳ TERAZ: stoisz na silniku %d min · ok. %.2f L\n",
+                s.optInt("idleNowMin"), s.optDouble("idleNowL")) : "";
         JSONArray a = s.optJSONArray("idles");
-        if (a == null || a.length() == 0) return "Brak.";
+        if (a == null || a.length() == 0) return now + (now.isEmpty() ? "Brak." : "(zapisze się po ruszeniu lub zgaszeniu silnika)");
+        if (!now.isEmpty()) now += "\n";
         List<String> rows = new ArrayList<>();
         double sum = 0;
         for (int i = 0; i < a.length(); i++) {
@@ -341,7 +358,7 @@ public class MojeAuto extends Activity {
                     + String.format(Locale.US, "%.2f L", e.optDouble("l")));
         }
         Collections.reverse(rows);
-        return android.text.TextUtils.join("\n", rows.subList(0, Math.min(20, rows.size())))
+        return now + android.text.TextUtils.join("\n", rows.subList(0, Math.min(20, rows.size())))
                 + String.format(Locale.US, "\nRazem: ok. %.1f L (wolne obroty ≈ 0,9 l/h)", sum);
     }
 

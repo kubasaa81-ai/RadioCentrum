@@ -341,6 +341,12 @@ final class Auto {
             if (left != Integer.MIN_VALUE) m.put("serviceLeft", left);
             m.put("refuels", Paliwo.log());
             m.put("idles", new org.json.JSONArray(p.getString("idles", "[]")));
+            // trwający postój na pracującym silniku (widać na telefonie na bieżąco)
+            if (idleSince != 0 && runSince != 0) {
+                long ms = android.os.SystemClock.elapsedRealtime() - idleSince;
+                m.put("idleNowMin", Math.round(ms / 60000.0));
+                m.put("idleNowL", Math.round(ms / 3600000.0 * IDLE_LPH * 100) / 100.0);
+            }
             m.put("months", new org.json.JSONObject(p.getString("months", "{}")));
             android.location.Location l = Fotoradary.last;
             if (l != null) {

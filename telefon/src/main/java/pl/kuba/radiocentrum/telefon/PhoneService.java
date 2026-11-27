@@ -656,6 +656,11 @@ public class PhoneService extends NotificationListenerService implements Link.Ha
         }, "rc-send-file").start();
     }
 
+    /** Poproś radio o świeży stan auta (paliwo, postój itd.). */
+    public void requestCarState() {
+        send(J.obj("t", "get_state"));
+    }
+
     public void requestFileList() {
         send(J.obj("t", "listfiles"));
     }

@@ -454,6 +454,9 @@ public class RadioService extends Service implements Link.Handler {
                 Store.phoneBat = m.optInt("bat", -1);
                 Store.phoneChg = m.optBoolean("chg");
                 return;
+            case "get_state":
+                Auto.sendState(this, false);
+                return;
             case "listfiles":
                 new Thread(this::sendFileList, "rc-files").start();
                 return;
