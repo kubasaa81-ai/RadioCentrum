@@ -1993,6 +1993,33 @@ public class MainActivity extends Activity {
         }
         if (found.length() > 0) toast("Znalezione aplikacje CAN:\n" + found);
         exportApks("CAN-", l.toArray(new String[0]));
+        // nowa fabryczna aplikacja (kyhero) ładuje obsługę auta z wtyczki CanBus.apk – spróbuj ją skopiować
+        new Thread(() -> {
+            String[] dirs = {"/mnt/vendor/protect_f/CanBus/plugin", "/protect_f/CanBus/plugin",
+                    "/mnt/vendor/protect_f/CanBus", "/protect_f/CanBus"};
+            java.io.File dl = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS);
+            StringBuilder rep = new StringBuilder();
+            for (String d : dirs) {
+                java.io.File[] fs = new java.io.File(d).listFiles();
+                if (fs == null) {
+                    rep.append(d).append(": brak dostępu\n");
+                    continue;
+                }
+                for (java.io.File f : fs) {
+                    if (!f.isFile()) continue;
+                    try (java.io.InputStream in = new java.io.FileInputStream(f);
+                         java.io.OutputStream out = new java.io.FileOutputStream(new java.io.File(dl, "CANPLUGIN-" + f.getName()))) {
+                        byte[] b = new byte[65536];
+                        int n;
+                        while ((n = in.read(b)) > 0) out.write(b, 0, n);
+                        rep.append("✅ ").append(f.getName()).append("\n");
+                    } catch (Exception e) {
+                        rep.append("❌ ").append(f.getName()).append(": ").append(e.getMessage()).append("\n");
+                    }
+                }
+            }
+            runOnUiThread(() -> toast("Wtyczka CAN:\n" + rep));
+        }).start();
     }
 
     /** Fabryczne aplikacje radia FM – do podejrzenia, jak sterują tunerem. */
