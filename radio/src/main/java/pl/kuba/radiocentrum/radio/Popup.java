@@ -191,7 +191,11 @@ final class Popup {
             String icon, label;
             int accent;
             String[] sh = "shift".equals(kind) ? (text + "|||").split("\\|") : null;
-            if (sh != null) {
+            if ("belt".equals(kind)) {
+                icon = "🔔";
+                label = "ZAPNIJ PAS!";
+                accent = Ui.RED;
+            } else if (sh != null) {
                 boolean upS = !"DOWN".equals(sh[0]);
                 icon = upS ? "⬆" : "⬇";
                 label = (upS ? "WRZUĆ " : "REDUKUJ NA ") + sh[1] + " BIEG";
@@ -231,12 +235,14 @@ final class Popup {
                         : "UWAGA NA DRODZE";
                 accent = Ui.RED;
             }
-            boolean road = !"hand".equals(kind) && !kind.startsWith("batt") && !"ice".equals(kind) && !"shift".equals(kind);
+            boolean road = !"hand".equals(kind) && !kind.startsWith("batt") && !"ice".equals(kind) && !"shift".equals(kind)
+                    && !"belt".equals(kind);
             int lim = road ? limitFrom(low) : 0;
             if (lim <= 0 && "cam".equals(kind) && Fotoradary.nearestM >= 0 && Fotoradary.nearestM < 1500) {
                 lim = Fotoradary.nearestLim;
             }
-            int speed = kind.startsWith("batt") || "ice".equals(kind) || "shift".equals(kind) ? 0 : Math.max(0, Auto.speed());
+            int speed = kind.startsWith("batt") || "ice".equals(kind) || "shift".equals(kind) || "belt".equals(kind)
+                    ? 0 : Math.max(0, Auto.speed());
 
             LinearLayout card = card(accent);
             card.setGravity(Gravity.CENTER_HORIZONTAL);

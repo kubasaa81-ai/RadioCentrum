@@ -306,6 +306,7 @@ final class CanBus {
                 .append(" [skala ").append(Auto.scaleText()).append("]")
                 .append(" (GPS ").append(Fotoradary.last != null ? Fotoradary.speedKmh + " km/h" : "–").append(")")
                 .append(", ręczny ").append(handbrakeUp == null ? "–" : handbrakeUp ? "ZACIĄGNIĘTY" : "opuszczony")
+                .append(", pas kierowcy ").append(beltOff == null ? "–" : beltOff ? "ODPIĘTY" : "zapięty")
                 .append("\n\n");
         if (snap != null) {
             sb.append("🔍 SZUKANIE ZMIAN – od ").append((System.currentTimeMillis() - snapAt) / 1000).append(" s\n");
@@ -338,10 +339,26 @@ final class CanBus {
     }
 
     static volatile int rpm = -1;
-    static volatile Boolean handbrakeUp;
+    static volatile Boolean handbrakeUp, beltOff;
+    private static long beltSince, beltWarnAt;
     static volatile int speedRaw = -1;
     private static int hbCount;
     private static boolean hbWarned;
+
+    /** Jazda (≥ 10 km/h przez 5 s) z odpiętym pasem kierowcy → znak „Zapnij pas”, powtarzany co minutę. */
+    private static void checkBelt() {
+        long now = android.os.SystemClock.elapsedRealtime();
+        if (!Boolean.TRUE.equals(beltOff) || Auto.speed() < 10) {
+            beltSince = 0;
+            if (!Boolean.TRUE.equals(beltOff)) Popup.hideAlertIf("belt");
+            return;
+        }
+        if (beltSince == 0) beltSince = now;
+        if (now - beltSince >= 5000 && now - beltWarnAt > 60000 && app != null) {
+            beltWarnAt = now;
+            Popup.showAlert(app, "belt", "", -1);
+        }
+    }
 
     /** Ruszasz z zaciągniętym ręcznym → duży znak i sygnał (raz, do opuszczenia ręcznego). */
     private static void checkHandbrake() {
@@ -395,6 +412,8 @@ final class CanBus {
             // sprawdzone w aucie: bit 0x20 = 1 → ręczny opuszczony, 0 → zaciągnięty
             final boolean up = (f[4] & 0x20) == 0;
             handbrakeUp = up;
+            // sprawdzone w aucie: bit 0x80 = 1 → pas kierowcy odpięty (pasa pasażera moduł nie podaje)
+            beltOff = (f[4] & 0x80) != 0;
             h.post(CanBus::checkHandbrake);
             return;
         }
@@ -426,6 +445,7 @@ final class CanBus {
         learn(fuelL, mileageKm);
         final int rr = r < 10000 ? r : -1, ff = fuelL, kk = mileageKm;
         h.post(CanBus::checkHandbrake);
+        h.post(CanBus::checkBelt);
         h.post(() -> {
             AccWatch.onRpm(rr);              // silnik pracuje / zgaszony → Yanosik
             Paliwo.onFuel(app, ff, kk, rr);  // rezerwa, tankowania
