@@ -369,22 +369,7 @@ final class Auto {
         int prev = prevRpm;
         prevRpm = rpm;
         if (rpm > maxRpmSeen) maxRpmSeen = rpm;
-        if (lim <= 0) return;
-        // zmiana biegu = obroty spadły o 300+ od szczytu albo poniżej progu → można znowu podpowiedzieć
-        if (!armed) {
-            if (rpm > peakRpm) peakRpm = rpm;
-            if (rpm < lim || rpm <= peakRpm - 300) armed = true;
-        }
-        long now = System.currentTimeMillis();
-        // przejście przez próg (także gdy między odczytami obroty skoczyły wysoko)
-        if (armed && rpm >= lim && speed() >= 5 && now - shiftSaidAt > 3000) {
-            armed = false;
-            peakRpm = rpm;
-            shiftSaidAt = now;
-            shiftCount++;
-            shiftLast = "przy " + rpm + " obr/min, " + speed() + " km/h (poprzedni odczyt " + prev + ")";
-            sayShift(c);
-        }
+        Biegi.onRpm(c, rpm); // bieg z prędkości i obrotów → ⬆ wrzuć N / ⬇ redukuj na N
     }
 
     /** Silnik zgaszony (obroty 0 albo wyjęty kluczyk): trasa zostaje na ekranie, wyzeruje się przy następnym uruchomieniu. */
@@ -397,17 +382,15 @@ final class Auto {
     static volatile int shiftCount, maxRpmSeen;
     static volatile String shiftLast = "jeszcze nie było";
 
-    /** Znak na środku ekranu + krótki sygnał (bez czytania na głos). */
+    /** Test: przykładowy znak podpowiedzi. */
     static void sayShift(Context c) {
-        int r = prevRpm > 0 ? prevRpm : Prefs.shiftRpm(c);
-        Popup.showAlert(c, "shift", String.valueOf(r), -1);
+        Popup.showAlert(c, "shift", "UP|3|2|" + Prefs.shiftRpm(c), -1);
     }
 
     static String shiftInfo(Context c) {
         int lim = Prefs.shiftRpm(c);
-        return "Podpowiedź biegu: " + (lim <= 0 ? "wyłączona" : "próg " + lim + " obr/min")
-                + ", było razy: " + shiftCount + " (" + shiftLast + ")"
-                + ", najwyższe obroty od startu: " + maxRpmSeen
-                ;
+        return "Podpowiedź biegu: " + (lim <= 0 ? "wyłączona" : "wyższy od " + lim + ", niższy poniżej "
+                + Math.max(1000, lim - 800) + " obr/min") + ", najwyższe obroty od startu: " + maxRpmSeen
+                + "\n" + Biegi.info();
     }
 }

@@ -190,10 +190,12 @@ final class Popup {
             String low = text == null ? "" : text.toLowerCase(java.util.Locale.ROOT);
             String icon, label;
             int accent;
-            if ("shift".equals(kind)) {
-                icon = "⬆";
-                label = "ZMIEŃ BIEG NA WYŻSZY";
-                accent = 0xFF26A69A;
+            String[] sh = "shift".equals(kind) ? (text + "|||").split("\\|") : null;
+            if (sh != null) {
+                boolean upS = !"DOWN".equals(sh[0]);
+                icon = upS ? "⬆" : "⬇";
+                label = (upS ? "WRZUĆ " : "REDUKUJ NA ") + sh[1] + " BIEG";
+                accent = upS ? 0xFF26A69A : 0xFFFFA000;
             } else if ("ice".equals(kind)) {
                 icon = "❄";
                 label = "MOŻLIWA ŚLISKOŚĆ";
@@ -250,8 +252,8 @@ final class Popup {
             lb.setMaxLines(2);
             card.addView(lb, new LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
-            if ("shift".equals(kind)) {
-                TextView d = Ui.text(app, text + " obr/min", 26, Ui.WHITE, true);
+            if (sh != null) {
+                TextView d = Ui.text(app, "jedziesz na " + sh[2] + " · " + sh[3] + " obr/min", 24, Ui.WHITE, true);
                 d.setGravity(Gravity.CENTER);
                 card.addView(d, new LinearLayout.LayoutParams(
                         LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
