@@ -1192,7 +1192,6 @@ public class MainActivity extends Activity {
                         }),
                 o.btn("🔎 Podgląd CAN", 0xFF00838F, true, this::canView));
         o.row(o.btn("🔎 Szukaj serwerów aktualizacji", 0xFF1565C0, true, () -> {
-            toast("Przeglądam aplikacje w radiu – to potrwa 1–3 minuty, możesz w tym czasie korzystać z radia");
             UpdScan.start(this);
         }));
         o.row(o.btn("🔬 Sonda CAN – bezpieczna", 0xFF455A64, true, () -> CanProbe.run(this)),

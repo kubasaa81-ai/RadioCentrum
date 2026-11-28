@@ -34,7 +34,8 @@ final class UpdScan {
     }
 
     interface Progress {
-        void on(String text);
+        /** pct 0–100, text – co teraz robi */
+        void on(int pct, String text);
     }
 
     private static final Pattern URL = Pattern.compile("https?://[A-Za-z0-9._~:/?#@!$&'()*+,;=%-]{6,200}");
@@ -56,7 +57,8 @@ final class UpdScan {
             n++;
             if (ai.packageName.equals(c.getPackageName())) continue; // nasza aplikacja – pomijamy
             String label = String.valueOf(pm.getApplicationLabel(ai));
-            if (p != null) p.on("Przeglądam " + n + "/" + apps.size() + ": " + label);
+            if (p != null) p.on(n * 85 / Math.max(1, apps.size()),
+                    "Aplikacja " + n + " z " + apps.size() + ":\n" + label);
             Set<String> urls = new LinkedHashSet<>();
             try (ZipFile z = new ZipFile(ai.sourceDir)) {
                 java.util.Enumeration<? extends ZipEntry> en = z.entries();
@@ -85,7 +87,8 @@ final class UpdScan {
                     .append(sys ? " · systemowa" : "").append("\n");
             for (String u : urls) {
                 rep.append("  ").append(u).append("\n");
-                if (u.contains("?app=") || u.matches("(?i).*(checkupdate|check_update|getversion|version\\.json|update\\.json|ota.*check|appupdate).*")) {
+                if (u.contains("?app=") || u.contains("xygala.com/api.php") || u.endsWith("car_config.json")
+                        || u.matches("(?i).*(checkupdate|check_update|getversion|version\\.json|update\\.json|ota.*check|appupdate|m=update).*")) {
                     toQuery.add(u);
                 }
             }
@@ -93,11 +96,20 @@ final class UpdScan {
         }
 
         rep.append("\n===== ODPOWIEDZI SERWERÓW (tylko odczyt) =====\n");
-        int q = 0;
+        if (p != null) p.on(86, "Sprawdzam, czy radio ma internet…");
+        rep.append("\n>>> test internetu: http://connectivitycheck.gstatic.com/generate_204\n")
+                .append(get("http://connectivitycheck.gstatic.com/generate_204", 8000)).append("\n");
+        // serwery producenta radia – także w wersji https, gdyby port 80 był blokowany
+        Set<String> extra = new LinkedHashSet<>();
         for (String u : toQuery) {
+            extra.add(u);
+            if (u.startsWith("http://") && u.contains("xygala.com")) extra.add("https://" + u.substring(7));
+        }
+        int q = 0, tot = Math.min(30, extra.size());
+        for (String u : extra) {
             if (++q > 30) break;
-            if (p != null) p.on("Pytam serwer " + q + "/" + Math.min(30, toQuery.size()) + "…");
-            rep.append("\n>>> ").append(u).append("\n").append(get(u)).append("\n");
+            if (p != null) p.on(86 + q * 13 / Math.max(1, tot), "Pytam serwer " + q + " z " + tot + ":\n" + host(u));
+            rep.append("\n>>> ").append(u).append("\n").append(get(u, 20000)).append("\n");
         }
         if (toQuery.isEmpty()) rep.append("(brak adresów sprawdzania wersji)\n");
 
@@ -132,11 +144,20 @@ final class UpdScan {
         }
     }
 
-    private static String get(String u) {
+    private static String host(String u) {
+        try {
+            return new URL(u).getHost();
+        } catch (Exception e) {
+            return u;
+        }
+    }
+
+    private static String get(String u, int timeout) {
+        long t0 = android.os.SystemClock.elapsedRealtime();
         try {
             HttpURLConnection c = (HttpURLConnection) new URL(u).openConnection();
-            c.setConnectTimeout(8000);
-            c.setReadTimeout(8000);
+            c.setConnectTimeout(timeout);
+            c.setReadTimeout(timeout);
             c.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android)");
             int code = c.getResponseCode();
             InputStream in = code >= 400 ? c.getErrorStream() : c.getInputStream();
@@ -152,32 +173,136 @@ final class UpdScan {
                 in.close();
                 body = o.toString("UTF-8");
             }
-            return "HTTP " + code + "\n" + body;
-        } catch (Exception e) {
-            return "błąd: " + e;
+            return "HTTP " + code + " (" + (android.os.SystemClock.elapsedRealtime() - t0) + " ms)\n" + body;
+        } catch (Throwable e) {
+            return "błąd po " + (android.os.SystemClock.elapsedRealtime() - t0) + " ms: " + e;
         }
     }
 
-    /** Uruchom z ekranu radia: postęp na toastach, na końcu okno z nazwą pliku. */
+    private static volatile boolean running;
+
+    /** Uruchom z ekranu radia: okienko z paskiem postępu, na końcu nazwa pliku. */
     static void start(final MainActivity a) {
+        if (running) {
+            a.toast("Skan już trwa – poczekaj na „Gotowe”");
+            return;
+        }
+        running = true;
         final android.os.Handler h = new android.os.Handler(android.os.Looper.getMainLooper());
-        final android.widget.Toast[] t = {null};
+        float dp = a.getResources().getDisplayMetrics().density;
+        int pad = (int) (20 * dp);
+
+        android.widget.LinearLayout box = new android.widget.LinearLayout(a);
+        box.setOrientation(android.widget.LinearLayout.VERTICAL);
+        box.setPadding(pad, pad, pad, pad);
+        android.graphics.drawable.GradientDrawable bg = new android.graphics.drawable.GradientDrawable();
+        bg.setColor(0xFF1E2A38);
+        bg.setCornerRadius(16 * dp);
+        box.setBackground(bg);
+
+        android.widget.TextView title = new android.widget.TextView(a);
+        title.setText("🔎 Szukam serwerów aktualizacji");
+        title.setTextColor(0xFFFFFFFF);
+        title.setTextSize(20);
+        title.setTypeface(null, android.graphics.Typeface.BOLD);
+        box.addView(title);
+
+        final android.widget.TextView pctTv = new android.widget.TextView(a);
+        pctTv.setText("0%");
+        pctTv.setTextColor(0xFF64B5F6);
+        pctTv.setTextSize(28);
+        pctTv.setTypeface(null, android.graphics.Typeface.BOLD);
+        pctTv.setGravity(android.view.Gravity.CENTER_HORIZONTAL);
+        pctTv.setPadding(0, (int) (12 * dp), 0, (int) (6 * dp));
+        box.addView(pctTv);
+
+        final android.widget.ProgressBar bar = new android.widget.ProgressBar(a, null,
+                android.R.attr.progressBarStyleHorizontal);
+        bar.setMax(100);
+        bar.setProgress(0);
+        bar.setProgressTintList(android.content.res.ColorStateList.valueOf(0xFF42A5F5));
+        bar.setProgressBackgroundTintList(android.content.res.ColorStateList.valueOf(0xFF455A64));
+        box.addView(bar, new android.widget.LinearLayout.LayoutParams(
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT, (int) (14 * dp)));
+
+        final android.widget.TextView info = new android.widget.TextView(a);
+        info.setText("Przygotowuję listę aplikacji…");
+        info.setTextColor(0xFFCFD8DC);
+        info.setTextSize(16);
+        info.setMinLines(2);
+        info.setPadding(0, (int) (10 * dp), 0, (int) (14 * dp));
+        box.addView(info);
+
+        android.widget.TextView hint = new android.widget.TextView(a);
+        hint.setText("Możesz schować to okno – skan pracuje dalej, a na końcu pojawi się „✅ Gotowe”.");
+        hint.setTextColor(0xFF90A4AE);
+        hint.setTextSize(13);
+        box.addView(hint);
+
+        android.widget.Button hide = new android.widget.Button(a);
+        hide.setText("Schowaj okno");
+        hide.setAllCaps(false);
+        hide.setTextColor(0xFFFFFFFF);
+        hide.setTextSize(16);
+        android.graphics.drawable.GradientDrawable hb = new android.graphics.drawable.GradientDrawable();
+        hb.setColor(0xFF00897B);
+        hb.setCornerRadius(10 * dp);
+        hide.setBackground(hb);
+        android.widget.LinearLayout.LayoutParams hlp = new android.widget.LinearLayout.LayoutParams(
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.WRAP_CONTENT);
+        hlp.topMargin = (int) (14 * dp);
+        box.addView(hide, hlp);
+
+        final android.app.Dialog d = new android.app.Dialog(a);
+        d.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE);
+        d.setContentView(box);
+        d.setCancelable(true);
+        if (d.getWindow() != null) {
+            d.getWindow().setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(0));
+            int w = Math.min(a.getResources().getDisplayMetrics().widthPixels * 9 / 10, (int) (520 * dp));
+            d.getWindow().setLayout(w, android.view.ViewGroup.LayoutParams.WRAP_CONTENT);
+        }
+        hide.setOnClickListener(v -> d.dismiss());
+        try {
+            d.show();
+            if (d.getWindow() != null) {
+                int w = Math.min(a.getResources().getDisplayMetrics().widthPixels * 9 / 10, (int) (520 * dp));
+                d.getWindow().setLayout(w, android.view.ViewGroup.LayoutParams.WRAP_CONTENT);
+            }
+        } catch (Throwable ignored) {
+        }
+
         new Thread(() -> {
             try {
                 final long[] last = {0};
-                File f = run(a, txt -> {
+                File f = run(a, (pct, txt) -> {
                     long now = System.currentTimeMillis();
-                    if (now - last[0] < 2500) return;
+                    if (now - last[0] < 300) return;
                     last[0] = now;
                     h.post(() -> {
-                        if (t[0] != null) t[0].cancel();
-                        t[0] = android.widget.Toast.makeText(a, "🔎 " + txt, android.widget.Toast.LENGTH_SHORT);
-                        t[0].show();
+                        bar.setProgress(pct);
+                        pctTv.setText(pct + "%");
+                        info.setText(txt);
                     });
                 });
-                h.post(() -> a.toast("✅ Gotowe: Pobrane/" + f.getName() + " – pobierz telefonem i wyślij w czacie"));
+                h.post(() -> {
+                    bar.setProgress(100);
+                    pctTv.setText("100%");
+                    pctTv.setTextColor(0xFF66BB6A);
+                    title.setText("✅ Gotowe");
+                    info.setText("Zapisano: Pobrane/" + f.getName() + "\nPobierz telefonem i wyślij w czacie.");
+                    hide.setText("Zamknij");
+                    a.toast("✅ Gotowe: Pobrane/" + f.getName());
+                });
             } catch (Throwable e) {
-                h.post(() -> a.toast("Skan nie wyszedł: " + e));
+                h.post(() -> {
+                    title.setText("⚠ Skan nie wyszedł");
+                    info.setText(String.valueOf(e));
+                    hide.setText("Zamknij");
+                    a.toast("Skan nie wyszedł: " + e);
+                });
+            } finally {
+                running = false;
             }
         }, "rc-updscan").start();
     }
